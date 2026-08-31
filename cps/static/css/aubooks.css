@@ -1,1 +1,108 @@
-/* AU-Books theme styles will be added here. */
+/* Functional accessibility foundation for the AU-Books theme. */
+
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 1rem;
+  z-index: 2000;
+  padding: 0.75rem 1rem;
+  transform: translateY(-150%);
+  border: 2px solid #111;
+  border-radius: 0 0 4px 4px;
+  background: #fff;
+  color: #111;
+  font-weight: 700;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+a:focus,
+button:focus,
+input:focus,
+select:focus,
+textarea:focus,
+[tabindex]:focus {
+  outline: 3px solid #111 !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px #ffd600 !important;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #111 !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px #ffd600 !important;
+}
+
+.btn-file input[type="file"]:focus {
+  outline: 3px solid #111 !important;
+}
+
+.btn-file:focus-within {
+  outline: 3px solid #111;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px #ffd600;
+}
+
+a,
+.danger,
+.book-remove,
+.editable-empty,
+.editable-empty:hover,
+.btn-default:hover {
+  color: #176b60;
+}
+
+.navbar-brand {
+  color: #176b60 !important;
+}
+
+.navigation .create-shelf a {
+  background-color: #176b60;
+  color: #fff;
+}
+
+.aubooks-main a:not(.btn) {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+.aubooks-main a:not(.btn):hover,
+.aubooks-main a:not(.btn):focus {
+  text-decoration-thickness: 2px;
+}
+
+.container-fluid .book .meta .author,
+.navigation .nav-head {
+  color: #595959;
+}
+
+.aubooks-main,
+.aubooks-sidebar {
+  max-height: none;
+  overflow: visible;
+}
+
+.aubooks-main:focus {
+  scroll-margin-top: 1rem;
+}
+
+.aubooks-footer {
+  clear: both;
+  margin-top: 2rem;
+  padding: 1rem 15px;
+  border-top: 1px solid #aaa;
+  color: #444;
+}
+
+.aubooks-footer p {
+  margin: 0;
+}
