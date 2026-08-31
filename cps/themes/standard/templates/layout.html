@@ -18,6 +18,7 @@
     {% block header %}{% endblock %}
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet" media="screen">
     <link href="{{ url_for('static', filename='css/upload.css') }}" rel="stylesheet" media="screen">
+    {% block theme_css %}{% endblock %}
   </head>
   <body class="{{ page }} {{ bodyClass }}">
     <!-- Static navbar -->

@@ -60,6 +60,20 @@ THEMES = (
         "show_home_shortcuts": False,
         "profile_dropdown": False,
         "show_upload_loader": False
+    },
+    {
+        "id": 3,
+        "identifier": "aubooks",
+        "label": "AU-Books",
+        "configurable": True,
+        "css_files": (
+            "css/aubooks.css",
+        ),
+        "js_files": (),
+        "body_class": "",
+        "show_home_shortcuts": False,
+        "profile_dropdown": False,
+        "show_upload_loader": False
     }
 )
 
