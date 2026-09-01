@@ -40,6 +40,7 @@ def main():
     from .search import search
     from .search_metadata import meta
     from .shelf import shelf
+    from .seo import seo
     from .tasks_status import tasks
     from .error_handler import init_errorhandler
     from .remotelogin import remotelogin
@@ -71,6 +72,7 @@ def main():
     app.register_blueprint(jinjia)
     app.register_blueprint(about)
     app.register_blueprint(shelf)
+    app.register_blueprint(seo)
     app.register_blueprint(admi)
     app.register_blueprint(remotelogin)
     app.register_blueprint(meta)

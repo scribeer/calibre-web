@@ -1,0 +1,23 @@
+{% extends "_themes/standard/detail.html" %}
+{% block header %}
+    <meta name="description" content="{{ seo_description }}">
+    <link rel="canonical" href="{{ canonical_url }}">
+    <meta property="og:type" content="book">
+    <meta property="og:title" content="{{ entry.title }}">
+    <meta property="og:description" content="{{ seo_description }}">
+    <meta property="og:url" content="{{ canonical_url }}">
+    <meta property="og:site_name" content="{{ instance }}">
+    {% if seo_image %}<meta property="og:image" content="{{ seo_image }}">{% endif %}
+    <script type="application/ld+json">{{ seo_json_ld|tojson }}</script>
+{% endblock %}
+{% block body %}
+{% if not is_xhr %}
+<nav aria-label="{{_('Breadcrumb')}}">
+  <ol class="breadcrumb">
+    <li><a href="{{ url_for('web.index') }}">{{_('Books')}}</a></li>
+    <li aria-current="page">{{ entry.title }}</li>
+  </ol>
+</nav>
+{% endif %}
+{{ super() }}
+{% endblock %}

@@ -39,7 +39,7 @@ from .dep_check import dependency_check
 from .updater import Updater
 from . import config_sql
 from . import cache_buster
-from . import ub, db
+from . import ub, db, seo_db
 
 try:
     from flask_limiter import Limiter
@@ -132,6 +132,7 @@ def create_app():
     cli_param.init()
 
     ub.init_db(cli_param.settings_path)
+    seo_db.init_db(ub.session)
     # pylint: disable=no-member
     encrypt_key, error = config_sql.get_encryption_key(os.path.dirname(cli_param.settings_path))
 

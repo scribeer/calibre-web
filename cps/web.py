@@ -1184,11 +1184,26 @@ def get_series_cover(series_id, resolution=None):
 
 @web.route("/robots.txt")
 def get_robots():
-    try:
-        return send_from_directory(constants.STATIC_DIR, "robots.txt")
-    except PermissionError:
-        log.error("No permission to access robots.txt file.")
-        abort(403)
+    prefix = request.script_root.rstrip("/")
+    if not config.config_anonbrowse:
+        lines = ("User-agent: *", "Disallow: {}/".format(prefix), "")
+    else:
+        from .seo import external_url
+        lines = (
+            "User-agent: *",
+            "Allow: {}/books/".format(prefix),
+            "Disallow: {}/admin/".format(prefix),
+            "Disallow: {}/ajax/".format(prefix),
+            "Disallow: {}/book/".format(prefix),
+            "Disallow: {}/login".format(prefix),
+            "Disallow: {}/search".format(prefix),
+            "Disallow: {}/tasks".format(prefix),
+            "Sitemap: {}".format(external_url("seo.sitemap_index")),
+            "",
+        )
+    response = make_response("\n".join(lines))
+    response.mimetype = "text/plain"
+    return response
 
 
 @web.route("/show/<int:book_id>/<book_format>", defaults={'anyname': 'None'})
@@ -1625,9 +1640,7 @@ def read_book(book_id, book_format):
         return redirect(url_for("web.index"))
 
 
-@web.route("/book/<int:book_id>")
-@login_required_if_no_ano
-def show_book(book_id):
+def render_book_detail(book_id, canonical_route):
     entries = calibre_db.get_book_read_archived(book_id, config.config_read_column, allow_show_archived=True)
     if entries:
         read_book = entries[1]
@@ -1661,15 +1674,27 @@ def show_book(book_id):
             if media_format.format.lower() in constants.EXTENSIONS_AUDIO:
                 entry.audio_entries.append(media_format.format.lower())
 
+        from .seo import detail_context
         return render_title_template('detail.html',
                                      entry=entry,
                                      cc=cc,
                                      is_xhr=request.headers.get('X-Requested-With') == 'XMLHttpRequest',
                                      title=entry.title,
                                      books_shelfs=book_in_shelves,
-                                     page="book")
+                                     page="book",
+                                     **detail_context(entry, canonical_route))
     else:
         log.debug("Selected book is unavailable. File does not exist or is not accessible")
         flash(_("Oops! Selected book is unavailable. File does not exist or is not accessible"),
               category="error")
-        return redirect(url_for("web.index"))
+        abort(404)
+
+
+@web.route("/book/<int:book_id>")
+@login_required_if_no_ano
+def show_book(book_id):
+    entry = calibre_db.get_filtered_book(book_id, allow_show_archived=True)
+    if entry is None:
+        abort(404)
+    from .seo import book_url
+    return redirect(book_url(book_id, create=True), code=301)

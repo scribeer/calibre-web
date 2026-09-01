@@ -772,10 +772,11 @@ class CalibreDB:
             log.error("Database error: {}".format(e))
 
     # Language and content filters for displaying in the UI
-    def common_filters(self, allow_show_archived=False, return_all_languages=False):
+    def common_filters(self, allow_show_archived=False, return_all_languages=False, user=None):
+        filter_user = user if user is not None else current_user
         if not allow_show_archived:
             archived_books = (ub.session.query(ub.ArchivedBook)
-                              .filter(ub.ArchivedBook.user_id==int(current_user.id))
+                              .filter(ub.ArchivedBook.user_id==int(filter_user.id))
                               .filter(ub.ArchivedBook.is_archived==True)
                               .all())
             archived_book_ids = [archived_book.book_id for archived_book in archived_books]
@@ -783,21 +784,21 @@ class CalibreDB:
         else:
             archived_filter = true()
 
-        if current_user.filter_language() == "all" or return_all_languages:
+        if filter_user.filter_language() == "all" or return_all_languages:
             lang_filter = true()
         else:
-            lang_filter = Books.languages.any(Languages.lang_code == current_user.filter_language())
-        negtags_list = current_user.list_denied_tags()
-        postags_list = current_user.list_allowed_tags()
+            lang_filter = Books.languages.any(Languages.lang_code == filter_user.filter_language())
+        negtags_list = filter_user.list_denied_tags()
+        postags_list = filter_user.list_allowed_tags()
         neg_content_tags_filter = false() if negtags_list == [''] else Books.tags.any(Tags.name.in_(negtags_list))
         pos_content_tags_filter = true() if postags_list == [''] else Books.tags.any(Tags.name.in_(postags_list))
         if self.config.config_restricted_column:
             try:
-                pos_cc_list = current_user.allowed_column_value.split(',')
+                pos_cc_list = filter_user.allowed_column_value.split(',')
                 pos_content_cc_filter = true() if pos_cc_list == [''] else \
                     getattr(Books, 'custom_column_' + str(self.config.config_restricted_column)). \
                     any(cc_classes[self.config.config_restricted_column].value.in_(pos_cc_list))
-                neg_cc_list = current_user.denied_column_value.split(',')
+                neg_cc_list = filter_user.denied_column_value.split(',')
                 neg_content_cc_filter = false() if neg_cc_list == [''] else \
                     getattr(Books, 'custom_column_' + str(self.config.config_restricted_column)). \
                     any(cc_classes[self.config.config_restricted_column].value.in_(neg_cc_list))
