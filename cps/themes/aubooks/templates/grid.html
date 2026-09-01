@@ -13,8 +13,7 @@
   {% if entries and entries[0] %}
   <div id="list" class="row display-flex">
     {% for entry in entries %}
-    <article class="col-sm-3 col-lg-2 col-xs-6 book sortable aubooks-book-card" {% if entry[0].sort %}data-name="{{entry[0].series[0].name}}"{% endif %} data-id="{{entry[0].series[0].name}}">
-      <div class="cover" aria-hidden="true"><span class="img" title="{{entry[0].series[0].name}}"><img srcset="{{entry[0]|get_cover_srcset}}" src="{{url_for('web.get_cover', book_id=entry[0].id, resolution='og', c=entry[0]|last_modified)}}" alt="" loading="lazy"><span class="badge">{{entry.count}}</span></span></div>
+    <article class="col-sm-3 col-lg-2 col-xs-6 book sortable aubooks-book-card aubooks-text-only" {% if entry[0].sort %}data-name="{{entry[0].series[0].name}}"{% endif %} data-id="{{entry[0].series[0].name}}">
       <div class="meta"><h2 class="title"><a href="{{url_for('web.books_list', data=data, sort_param='stored', book_id=entry[0].series[0].id)}}">{{entry[0].series[0].name}}</a></h2><p>{{_('Books')}}: {{entry.count}}</p></div>
     </article>
     {% endfor %}

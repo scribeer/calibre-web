@@ -164,6 +164,26 @@ a,
   background: transparent;
 }
 
+/* Text-only book cards (no cover images on catalog pages). */
+.aubooks-text-only {
+  padding: 0.5rem 0;
+}
+
+.aubooks-text-only .meta {
+  width: 100%;
+}
+
+/* Hide identifiers (ISBN, etc.) from user-facing UI. */
+.identifiers {
+  display: none;
+}
+
+/* Detail cover: graceful fallback when image fails to load. */
+.aubooks-cover-button img[data-failed="true"],
+.aubooks-cover-button img:is([src=""]) {
+  display: none;
+}
+
 .aubooks-directory-entry {
   padding-block: 0.25rem;
 }

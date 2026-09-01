@@ -34,8 +34,7 @@
   <h2 id="more-by-heading">{{_('More by')}} {{author.name.replace('|', ',')}}</h2>
   <div class="row display-flex">
     {% for entry in other_books %}
-    <article class="col-sm-3 col-lg-2 col-xs-6 book session aubooks-book-card">
-      <div class="cover" aria-hidden="true"><img src="{{entry.image_url}}" alt="" loading="lazy"></div>
+    <article class="col-sm-3 col-lg-2 col-xs-6 book session aubooks-book-card aubooks-text-only">
       <div class="meta">
         <h3 class="title"><a href="https://www.goodreads.com/book/show/{{entry.gid['#text']}}" target="_blank" rel="noopener">{{entry.title}}</a></h3>
         <p class="author"><span class="aubooks-meta-label">{{_('Author')}}:</span>

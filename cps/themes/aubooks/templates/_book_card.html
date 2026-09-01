@@ -1,13 +1,6 @@
 {% macro book_card(entry, heading_level=2, page='', show_read_status=true, link_authors=true) %}
 {% set book = entry.Books %}
-<article class="col-sm-3 col-lg-2 col-xs-6 book session aubooks-book-card">
-  <div class="cover">
-    <span class="img" title="{{book.title}}">
-      <img srcset="{{book|get_cover_srcset}}"
-           src="{{url_for('web.get_cover', book_id=book.id, resolution='og', c=book|last_modified)}}"
-           alt="" loading="lazy">
-    </span>
-  </div>
+<article class="col-sm-3 col-lg-2 col-xs-6 book session aubooks-book-card aubooks-text-only">
   <div class="meta">
     {% if heading_level == 3 %}
     <h3 class="title"><a href="{{url_for('web.show_book', book_id=book.id)}}" {% if simple==false %}data-toggle="modal" data-target="#bookDetailsModal" data-remote="false"{% endif %}>{{book.title}}</a></h3>
