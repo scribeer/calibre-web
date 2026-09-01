@@ -173,14 +173,9 @@ a,
   width: 100%;
 }
 
-/* Hide identifiers (ISBN, etc.) from user-facing UI. */
-.identifiers {
-  display: none;
-}
-
-/* Detail cover: graceful fallback when image fails to load. */
+/* Detail cover: graceful fallback when image fails to load or is deferred. */
 .aubooks-cover-button img[data-failed="true"],
-.aubooks-cover-button img:is([src=""]) {
+.aubooks-cover-button img:not([src]) {
   display: none;
 }
 

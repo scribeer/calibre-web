@@ -14,7 +14,7 @@
             <div class="cover">
                 <button type="button" id="detailcover" class="aubooks-cover-button" aria-label="{{_('Cover')}}: {{entry.title}}">
                     <img alt="" decoding="async" loading="lazy"
-                         src="{{ url_for('web.get_cover', book_id=entry.id, resolution='og', c=entry|last_modified) }}"
+                         data-src="{{ url_for('web.get_cover', book_id=entry.id, resolution='og', c=entry|last_modified) }}"
                          onerror="this.parentElement.parentElement.style.display='none'"/>
                 </button>
             </div>
@@ -53,23 +53,6 @@
                 <div class="languages">
                     <p>
                         <span class="label label-default">{{_('Language')}}: {% for language in entry.languages %}{{language.language_name}}{% if not loop.last %}, {% endif %}{% endfor %}</span>
-                    </p>
-                </div>
-            {% endif %}
-
-            {% if entry.identifiers|length > 0 %}
-                <div class="identifiers">
-                    <p>
-                         <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
-                        {% for identifier in entry.identifiers %}
-                            {% set identifier_link = identifier.__repr__() %}
-                            {% if identifier_link != identifier.val %}
-                                 <a href="{{ identifier_link|escape }}" target="_blank" rel="noopener" class="btn btn-xs btn-success"
-                                   role="button">{{ identifier.format_type() }}</a>
-                            {% else %}
-                                 <span class="label label-success">{{ identifier.format_type() }}</span>
-                            {% endif %}
-                        {% endfor %}
                     </p>
                 </div>
             {% endif %}

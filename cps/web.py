@@ -25,7 +25,7 @@ import chardet  # dependency of requests
 import copy
 from importlib.metadata import metadata
 
-from flask import Blueprint, jsonify, request, redirect, send_from_directory, make_response, flash, abort, url_for
+from flask import Blueprint, jsonify, request, redirect, send_from_directory, make_response, flash, abort, url_for, Response
 from flask import session as flask_session
 from flask_babel import gettext as _
 from flask_babel import get_locale
@@ -1157,6 +1157,11 @@ def category_list():
 @web.route("/cover/<int:book_id>/<string:resolution>")
 @login_required_if_no_ano
 def get_cover(book_id, resolution=None):
+    if resolution == 'og' or resolution is None:
+        from .opendrive import fetch_cover_from_opendrive
+        cover_data, content_type = fetch_cover_from_opendrive(book_id)
+        if cover_data:
+            return Response(cover_data, mimetype=content_type)
     resolutions = {
         'og': constants.COVER_THUMBNAIL_ORIGINAL,
         'sm': constants.COVER_THUMBNAIL_SMALL,

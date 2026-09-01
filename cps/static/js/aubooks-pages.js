@@ -128,4 +128,20 @@
                 });
         }, 0);
     });
+
+    function loadDeferredCovers() {
+        $("img[data-src]").each(function() {
+            var $img = $(this);
+            var src = $img.attr("data-src");
+            if (src) {
+                $img.removeAttr("data-src").attr("src", src);
+            }
+        });
+    }
+
+    if (window.requestIdleCallback) {
+        window.requestIdleCallback(loadDeferredCovers, {timeout: 3000});
+    } else {
+        window.addEventListener("load", loadDeferredCovers);
+    }
 })();
