@@ -1,0 +1,46 @@
+{% macro book_card(entry, heading_level=2, page='', show_read_status=true, link_authors=true) %}
+{% set book = entry.Books %}
+<article class="col-sm-3 col-lg-2 col-xs-6 book session aubooks-book-card">
+  <div class="cover">
+    <span class="img" title="{{book.title}}">
+      <img srcset="{{book|get_cover_srcset}}"
+           src="{{url_for('web.get_cover', book_id=book.id, resolution='og', c=book|last_modified)}}"
+           alt="" loading="lazy">
+    </span>
+  </div>
+  <div class="meta">
+    {% if heading_level == 3 %}
+    <h3 class="title"><a href="{{url_for('web.show_book', book_id=book.id)}}" {% if simple==false %}data-toggle="modal" data-target="#bookDetailsModal" data-remote="false"{% endif %}>{{book.title}}</a></h3>
+    {% else %}
+    <h2 class="title"><a href="{{url_for('web.show_book', book_id=book.id)}}" {% if simple==false %}data-toggle="modal" data-target="#bookDetailsModal" data-remote="false"{% endif %}>{{book.title}}</a></h2>
+    {% endif %}
+    <p class="author"><span class="aubooks-meta-label">{{_('Author')}}:</span>
+      {% for author in book.authors %}
+        {% if link_authors and author.id is defined and author.id %}
+          <a class="author-name" href="{{url_for('web.books_list', data='author', sort_param='stored', book_id=author.id)}}">{{author.name.replace('|', ',')}}</a>
+        {% else %}
+          <span class="author-name">{{author.name.replace('|', ',')}}</span>
+        {% endif %}{% if not loop.last %}<span> &amp; </span>{% endif %}
+      {% endfor %}
+      {% if book.data|music %}<span class="sr-only">{{_('Listen in Browser')}}</span>{% endif %}
+    </p>
+    {% if book.series|length > 0 %}
+    <p class="series"><span class="aubooks-meta-label">{{_('Series')}}:</span>
+      {% if page != 'series' and book.series[0].id is defined and book.series[0].id %}<a href="{{url_for('web.books_list', data='series', sort_param='stored', book_id=book.series[0].id)}}">{{book.series[0].name}}</a>{% else %}<span>{{book.series[0].name}}</span>{% endif %}
+      <span>({{book.series_index|formatfloat(2)}})</span>
+    </p>
+    {% endif %}
+    {% if book.data|length > 0 %}
+    <p class="formats"><span class="aubooks-meta-label">{{_('File formats')}}:</span>
+      {% for format in book.data %}{{format.format}}{% if not loop.last %}, {% endif %}{% endfor %}
+    </p>
+    {% endif %}
+    {% if book.ratings|length > 0 %}
+    <p class="rating"><span class="aubooks-meta-label">{{_('Rating')}}:</span> {{(book.ratings[0].rating / 2)|formatfloat(1)}} / 5</p>
+    {% endif %}
+    {% if show_read_status and entry[2] == true %}
+    <p class="read-status"><span class="glyphicon glyphicon-ok" aria-hidden="true"></span> <span class="sr-only">{{_('Read')}}</span>{{_('Read')}}</p>
+    {% endif %}
+  </div>
+</article>
+{% endmacro %}

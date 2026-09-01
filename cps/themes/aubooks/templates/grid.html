@@ -1,0 +1,25 @@
+{% extends theme('layout.html') %}
+{% block body %}
+<section class="discover aubooks-grid">
+  <h1 class="{{page}}">{{_(title)}}</h1>
+  <div class="filterheader aubooks-filter-controls" role="group" aria-label="{{_(title)}}">
+    <input type="hidden" name="csrf_token" value="{{csrf_token()}}">
+    <button type="button" id="asc" data-id="series" data-order="{{order}}" class="btn btn-primary{% if order == 1 %} active{% endif %}" aria-pressed="{{'true' if order == 1 else 'false'}}" aria-label="{{_('Sort title in alphabetical order')}}"><span class="glyphicon glyphicon-sort-by-alphabet" aria-hidden="true"></span></button>
+    <button type="button" id="desc" data-id="series" class="btn btn-primary{% if order == 0 %} active{% endif %}" aria-pressed="{{'true' if order == 0 else 'false'}}" aria-label="{{_('Sort title in reverse alphabetical order')}}"><span class="glyphicon glyphicon-sort-by-alphabet-alt" aria-hidden="true"></span></button>
+    {% if charlist|length %}<button type="button" id="all" class="active btn btn-primary" aria-pressed="true">{{_('All')}}</button>{% endif %}
+    <div class="btn-group character" role="group" aria-label="{{_('All')}}">{% for char in charlist %}<button type="button" class="btn btn-primary char" aria-pressed="false">{{char.char}}</button>{% endfor %}</div>
+    <button type="button" class="update-view btn btn-primary" data-target="series_view" id="list-button" data-view="list">{{_('List')}}</button>
+  </div>
+  {% if entries and entries[0] %}
+  <div id="list" class="row display-flex">
+    {% for entry in entries %}
+    <article class="col-sm-3 col-lg-2 col-xs-6 book sortable aubooks-book-card" {% if entry[0].sort %}data-name="{{entry[0].series[0].name}}"{% endif %} data-id="{{entry[0].series[0].name}}">
+      <div class="cover" aria-hidden="true"><span class="img" title="{{entry[0].series[0].name}}"><img srcset="{{entry[0]|get_cover_srcset}}" src="{{url_for('web.get_cover', book_id=entry[0].id, resolution='og', c=entry[0]|last_modified)}}" alt="" loading="lazy"><span class="badge">{{entry.count}}</span></span></div>
+      <div class="meta"><h2 class="title"><a href="{{url_for('web.books_list', data=data, sort_param='stored', book_id=entry[0].series[0].id)}}">{{entry[0].series[0].name}}</a></h2><p>{{_('Books')}}: {{entry.count}}</p></div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+{% block js %}<script src="{{url_for('static', filename='js/filter_grid.js')}}"></script>{% endblock %}

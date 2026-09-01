@@ -25,12 +25,14 @@ function handleResponse (data) {
         if($("#bookDetailsModal").is(":visible")) {
             data.forEach(function (item) {
                 $(".modal-header").after('<div id="flash_' + item.type +
-                    '" class="text-center alert alert-' + item.type + '">' + item.message + '</div>');
+                    '" class="text-center alert alert-' + item.type + '" role="' +
+                    (item.type === "danger" ? "alert" : "status") + '">' + item.message + '</div>');
             });
         } else {
             data.forEach(function (item) {
-                $(".navbar").after('<div class="row-fluid text-center">' +
-                    '<div id="flash_' + item.type + '" class="alert alert-' + item.type + '">' + item.message + '</div>' +
+                $("#flash-messages").append('<div class="row-fluid text-center">' +
+                    '<div id="flash_' + item.type + '" class="alert alert-' + item.type + '" role="' +
+                    (item.type === "danger" ? "alert" : "status") + '">' + item.message + '</div>' +
                     '</div>');
             });
         }
@@ -61,22 +63,8 @@ $("#have_read_cb").on("change", function() {
             // $("#flash_success").parent().remove();
             $("#flash_danger").remove();
             $(".row-fluid.text-center").remove();
-            if (!jQuery.isEmptyObject(data)) {
-                $("#have_read_cb").prop("checked", !$("#have_read_cb").prop("checked"));
-                if($("#bookDetailsModal").is(":visible")) {
-                    data.forEach(function (item) {
-                        $(".modal-header").after('<div id="flash_' + item.type +
-                            '" class="text-center alert alert-' + item.type + '">' + item.message + '</div>');
-                    });
-                } else
-                {
-                    data.forEach(function (item) {
-                        $(".navbar").after('<div class="row-fluid text-center" >' +
-                            '<div id="flash_' + item.type + '" class="alert alert-' + item.type + '">' + item.message + '</div>' +
-                            '</div>');
-                    });
-                }
-            }
+            $("#have_read_cb").prop("checked", !$("#have_read_cb").prop("checked"));
+            handleResponse(data);
         }
     });
 });
@@ -137,36 +125,52 @@ $(document).on("click", function (e) {
                 method:"post",
                 data: {csrf_token:$("input[name='csrf_token']").val()},
             })
-            .done(function() {
-                var $this = $(this);
-                switch ($this.data("shelf-action")) {
-                    case "add":
-                        $("#remove-from-shelves").append(
-                            templates.remove({
-                                add: $this.data('href'),
-                                remove: $this.data("remove-href"),
-                                content: $("<div>").text(this.textContent).html()
-                            })
-                        );
-                        break;
+             .done(function() {
+                 var $this = $(this);
+                 var $nextFocus;
+                 switch ($this.data("shelf-action")) {
+                     case "add":
+                         $("#remove-from-shelves").append(
+                             templates.remove({
+                                 add: $this.data('href'),
+                                 remove: $this.data("remove-href"),
+                                 content: $("<div>").text(this.textContent).html(),
+                                 success: $this.data("opposite-success"),
+                                 oppositeSuccess: $this.data("success")
+                             })
+                         );
+                         $nextFocus = $("#remove-from-shelves [data-shelf-action='remove']").last();
+                         break;
                     case "remove":
                         $("#add-to-shelves").append(
-                            templates.add({
-                                add: $this.data("add-href"),
-                                remove: $this.data('href'),
-                                content: $("<div>").text(this.textContent).html(),
-                            })
-                        );
-                        break;
-                }
-                this.parentNode.removeChild(this);
-            }.bind(this))
+                             templates.add({
+                                 add: $this.data("add-href"),
+                                 remove: $this.data('href'),
+                                 content: $("<div>").text(this.textContent).html(),
+                                 success: $this.data("opposite-success"),
+                                 oppositeSuccess: $this.data("success")
+                             })
+                         );
+                         $nextFocus = $("#add-to-shelf");
+                         break;
+                 }
+                 $("#shelf-action-status").attr("role", "status").text($this.data("success"));
+                 if ($this.closest("#add-to-shelves").length) {
+                     $this.closest("li").remove();
+                 } else {
+                     $this.remove();
+                 }
+                 if ($nextFocus && $nextFocus.length) {
+                     $nextFocus.trigger("focus");
+                 }
+             }.bind(this))
             .fail(function(xhr) {
                 var $msg = $("<span/>", { "class": "text-danger"}).text(xhr.responseText);
-                $("#shelf-action-status").html($msg);
+                $("#shelf-action-status").attr("role", "alert").html($msg);
 
                 setTimeout(function() {
                     $msg.remove();
+                    $("#shelf-action-status").attr("role", "status");
                 }, 10000);
             });
     });

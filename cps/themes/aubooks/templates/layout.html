@@ -111,6 +111,8 @@
       {% endfor %}
       {% block flash %}{% endblock %}
     </div>
+    <div id="aubooks-live-status" class="sr-only" role="status" aria-atomic="true"></div>
+    <div id="aubooks-live-alert" class="sr-only" role="alert" aria-atomic="true"></div>
     <div class="container-fluid">
       <div class="row-fluid">
         {% if current_user.is_authenticated or g.allow_anonymous %}
@@ -195,5 +197,6 @@
     <script src="{{ url_for('static', filename='js/uploadprogress.js') }}"> </script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block js %}{% endblock %}
+    <script src="{{ url_for('static', filename='js/aubooks-pages.js') }}"></script>
   </body>
 </html>

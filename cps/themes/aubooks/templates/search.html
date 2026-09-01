@@ -1,0 +1,63 @@
+{% from theme('_book_card.html') import book_card with context %}
+{% extends theme('layout.html') %}
+{% block body %}
+<section class="discover aubooks-search-results" aria-label="{{_('Search results')}}">
+  {% if not query and not adv_searchterm %}
+    <h1>{{_('Search')}}</h1>
+  {% elif entries|length < 1 %}
+    <div class="aubooks-empty-state">
+    <h1>{{_('No Results Found')}}</h1>
+    <p><span class="aubooks-meta-label">{{_('Search Term:')}}</span> {{adv_searchterm}}</p>
+    <p>{{_('Try a different search term or use Advanced Search to refine your query.')}}</p>
+    </div>
+  {% else %}
+    <h1>{{_('Results for:')}} {{adv_searchterm}}</h1>
+    <p class="sr-only" role="status" aria-live="polite">{{entries|length}} {{_('results found')}}</p>
+    {% if current_user.is_authenticated and (current_user.shelf.all() or g.shelves_access) %}
+    <div id="search-shelf-actions" class="btn-toolbar" role="toolbar" aria-label="{{_('Shelves')}}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="btn-group" role="group" aria-label="{{_('Add to shelf')}}">
+        <button id="search-add-to-shelf" type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+          <span class="glyphicon glyphicon-list" aria-hidden="true"></span> {{_('Add to shelf')}} <span class="caret" aria-hidden="true"></span>
+        </button>
+        <ul id="search-add-to-shelves" class="dropdown-menu" aria-labelledby="search-add-to-shelf">
+          {% for shelf in g.shelves_access %}{% if not shelf.is_public or current_user.role_edit_shelfs() %}
+          <li><button type="button" class="postAction aubooks-dropdown-action" data-action="{{url_for('shelf.search_to_shelf', shelf_id=shelf.id)}}">{{shelf.name}}{% if shelf.is_public == 1 %} {{_('(Public)')}}{% endif %}</button></li>
+          {% endif %}{% endfor %}
+        </ul>
+      </div>
+      <div class="btn-group" role="group" aria-label="{{_('Remove from shelf')}}">
+        <button id="search-remove-from-shelf" type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+          <span class="glyphicon glyphicon-list" aria-hidden="true"></span> {{_('Remove from shelf')}} <span class="caret" aria-hidden="true"></span>
+        </button>
+        <ul id="search-remove-from-shelves" class="dropdown-menu" aria-labelledby="search-remove-from-shelf">
+          {% for shelf in g.shelves_access %}{% if not shelf.is_public or current_user.role_edit_shelfs() %}
+          <li><button type="button" class="postAction aubooks-dropdown-action" data-action="{{url_for('shelf.search_from_shelf', shelf_id=shelf.id)}}">{{shelf.name}}{% if shelf.is_public == 1 %} {{_('(Public)')}}{% endif %}</button></li>
+          {% endif %}{% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+    <nav class="filterheader aubooks-sort-controls" aria-label="{{_('Search results sorting')}}">
+      {% set sorts = [
+        ('new', _('Sort according to book date, newest first'), 'glyphicon-sort-by-order'),
+        ('old', _('Sort according to book date, oldest first'), 'glyphicon-sort-by-order-alt'),
+        ('abc', _('Sort title in alphabetical order'), 'glyphicon-sort-by-alphabet'),
+        ('zyx', _('Sort title in reverse alphabetical order'), 'glyphicon-sort-by-alphabet-alt'),
+        ('authaz', _('Sort authors in alphabetical order'), 'glyphicon-user'),
+        ('authza', _('Sort authors in reverse alphabetical order'), 'glyphicon-user'),
+        ('pubnew', _('Sort according to publishing date, newest first'), 'glyphicon-calendar'),
+        ('pubold', _('Sort according to publishing date, oldest first'), 'glyphicon-calendar')
+      ] %}
+      {% for sort_key, sort_label, sort_icon in sorts %}
+      <a id="sort_{{sort_key}}" aria-label="{{sort_label}}" class="btn btn-primary{% if order == sort_key %} active{% endif %}" {% if order == sort_key %}aria-current="true"{% endif %} href="{{url_for('web.books_list', data=page, sort_param=sort_key, query=query)}}"><span class="glyphicon {{sort_icon}}" aria-hidden="true"></span><span class="sr-only">{{sort_label}}</span></a>
+      {% endfor %}
+    </nav>
+  {% endif %}
+  {% if entries|length > 0 %}
+  <div class="row display-flex">
+    {% for entry in entries %}{{ book_card(entry, heading_level=2, page=page) }}{% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends theme('layout.html') %}
+{% block body %}
+<h1 class="{{page}}">{{_(title)}}</h1>
+<div class="filterheader aubooks-filter-controls" role="group" aria-label="{{_(title)}}">
+  <input type="hidden" name="csrf_token" value="{{csrf_token()}}">
+  {% if entries|length and data == 'author' %}<button type="button" id="sort_name" class="btn btn-primary" aria-pressed="false"><b>B,A &harr; A B</b></button>{% endif %}
+  <button type="button" id="asc" data-order="{{order}}" data-id="{{data}}" class="btn btn-primary{% if order == 1 %} active{% endif %}" aria-pressed="{{'true' if order == 1 else 'false'}}" aria-label="{{_('Sort title in alphabetical order')}}"><span class="glyphicon glyphicon-sort-by-alphabet" aria-hidden="true"></span></button>
+  <button type="button" id="desc" data-id="{{data}}" class="btn btn-primary{% if order == 0 %} active{% endif %}" aria-pressed="{{'true' if order == 0 else 'false'}}" aria-label="{{_('Sort title in reverse alphabetical order')}}"><span class="glyphicon glyphicon-sort-by-alphabet-alt" aria-hidden="true"></span></button>
+  {% if charlist|length %}<button type="button" id="all" class="active btn btn-primary" aria-pressed="true">{{_('All')}}</button>{% endif %}
+  <div class="btn-group character" role="group" aria-label="{{_('All')}}">
+    {% for char in charlist %}<button type="button" class="btn btn-primary char" aria-pressed="false">{{char[0]}}</button>{% endfor %}
+  </div>
+  {% if data == 'series' %}<button type="button" class="update-view btn btn-primary" data-target="series_view" id="grid-button" data-view="grid">{{_('Grid')}}</button>{% endif %}
+</div>
+<div class="container1 aubooks-directory-list">
+  <div id="list" class="col-xs-12 col-sm-6">
+  {% for entry in entries %}
+    {% if loop.index0 == (loop.length/2+loop.length%2)|int and loop.length > 20 %}</div><div id="second" class="col-xs-12 col-sm-6">{% endif %}
+    <div class="row aubooks-directory-entry" {% if entry[0].sort %}data-name="{{entry[0].name}}"{% endif %} data-id="{% if entry[0].sort %}{{entry[0].sort}}{% elif entry[0].format %}{{entry[0].format}}{% elif entry[0].rating %}{{entry[0].rating}}{% else %}{{entry[0].name}}{% endif %}">
+      <div class="col-xs-2 col-sm-2 col-md-1"><span class="badge" aria-label="{{_('Books')}}: {{entry[1]}}">{{entry[1]}}</span></div>
+      <div class="col-xs-10 col-sm-10 col-md-11"><a id="list_{{loop.index0}}" href="{% if entry.format %}{{url_for('web.books_list', data=data, sort_param='stored', book_id=entry.format)}}{% else %}{{url_for('web.books_list', data=data, sort_param='stored', book_id=entry[0].id)}}{% endif %}">
+        {% if entry.name %}<span class="rating" aria-label="{{_('Rating')}}: {{entry.name}} / 5"><span aria-hidden="true">{% for number in range(entry.name|int) %}<span class="glyphicon glyphicon-star good"></span>{% endfor %}</span></span>{% elif entry.format %}{{entry.format}}{% else %}{{entry[0].name}}{% endif %}
+      </a></div>
+    </div>
+  {% endfor %}
+  </div>
+</div>
+{% endblock %}
+{% block js %}<script src="{{url_for('static', filename='js/filter_list.js')}}"></script>{% endblock %}
