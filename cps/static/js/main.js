@@ -102,7 +102,7 @@ $(document).on("click", ".postAction", function (event) {
 // Syntax has to be bind not on, otherwise problems with firefox
 $(".container-fluid").bind("dragenter dragover", function () {
     if($("#btn-upload").length && !$('body').hasClass('shelforder')) {
-        $(this).css('background', '#e6e6e6');
+        $(this).addClass("drag-over");
     }
     return false;
 });
@@ -110,7 +110,7 @@ $(".container-fluid").bind("dragenter dragover", function () {
 // Syntax has to be bind not on, otherwise problems with firefox
 $(".container-fluid").bind("dragleave", function () {
     if($("#btn-upload").length && !$('body').hasClass('shelforder')) {
-        $(this).css('background', '');
+        $(this).removeClass("drag-over");
     }
     return false;
 });
@@ -122,7 +122,7 @@ $(".container-fluid").bind('drop', function (e) {
     if($("#btn-upload").length) {
         var files = e.originalEvent.dataTransfer.files;
         var test = $("#btn-upload")[0].accept;
-        $(this).css('background', '');
+        $(this).removeClass("drag-over");
         const dt = new DataTransfer();
         jQuery.each(files, function (index, item) {
             if (test.indexOf(item.name.substr(item.name.lastIndexOf('.'))) !== -1) {

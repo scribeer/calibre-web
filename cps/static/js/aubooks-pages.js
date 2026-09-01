@@ -1,6 +1,98 @@
-/* AU-Books accessibility behavior layered on the existing Bootstrap UI. */
+/* AU-Books accessibility and theme behavior layered on the existing Bootstrap UI. */
 (function() {
     "use strict";
+
+    /* ======================================================================
+       Theme switching
+       ====================================================================== */
+
+    var STORAGE_KEY = "aubooks-theme";
+    var htmlEl = document.documentElement;
+    var mediaQuery = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+    var currentPreference = null; // "system" | "light" | "dark"
+    var systemListenerBound = false;
+
+    function safeGetStorage(key) {
+        try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+
+    function safeSetStorage(key, value) {
+        try { localStorage.setItem(key, value); } catch (e) { /* noop */ }
+    }
+
+    function resolveTheme(preference) {
+        if (preference === "light" || preference === "dark") {
+            return preference;
+        }
+        return (mediaQuery && mediaQuery.matches) ? "dark" : "light";
+    }
+
+    function applyTheme(resolved) {
+        htmlEl.setAttribute("data-theme", resolved);
+    }
+
+    function syncSelect(preference) {
+        var sel = document.getElementById("aubooks-color-theme");
+        if (sel) {
+            sel.value = preference;
+        }
+    }
+
+    function bindSystemListener() {
+        if (systemListenerBound || !mediaQuery) return;
+        systemListenerBound = true;
+        mediaQuery.addEventListener("change", function() {
+            if (currentPreference === "system") {
+                applyTheme(resolveTheme("system"));
+            }
+        });
+    }
+
+    function setTheme(preference) {
+        if (preference !== "light" && preference !== "dark") {
+            preference = "system";
+        }
+        currentPreference = preference;
+        safeSetStorage(STORAGE_KEY, preference);
+        applyTheme(resolveTheme(preference));
+        syncSelect(preference);
+        if (preference === "system") {
+            bindSystemListener();
+        }
+    }
+
+    // Initialize from storage
+    (function initTheme() {
+        var stored = safeGetStorage(STORAGE_KEY);
+        if (stored === "light" || stored === "dark") {
+            currentPreference = stored;
+        } else {
+            currentPreference = "system";
+        }
+        applyTheme(resolveTheme(currentPreference));
+        syncSelect(currentPreference);
+        if (currentPreference === "system") {
+            bindSystemListener();
+        }
+    })();
+
+    // Bind select element
+    $(document).on("change", "#aubooks-color-theme", function() {
+        setTheme($(this).val());
+    });
+
+    // Cross-tab sync via storage event
+    if (window.addEventListener) {
+        window.addEventListener("storage", function(e) {
+            if (e.key === STORAGE_KEY && e.newValue) {
+                setTheme(e.newValue);
+            }
+        });
+    }
+
+    /* ======================================================================
+       Accessibility: alerts, modals, focus
+       ====================================================================== */
 
     function messageText(message) {
         return $("<div>").html(message || "").text().trim();

@@ -1,17 +1,183 @@
-/* Functional accessibility foundation for the AU-Books theme. */
+/* AU-Books theme: CSS custom properties, light/dark palettes, and Bootstrap overrides. */
+
+/* ==========================================================================
+   1. CSS Custom Properties — Light palette (default)
+   ========================================================================== */
+
+:root {
+  /* Page & surfaces */
+  --aubooks-bg: #f2f2f2;
+  --aubooks-surface: #ffffff;
+  --aubooks-surface-raised: #f8f8f8;
+  --aubooks-surface-hover: #f5f5f5;
+
+  /* Text */
+  --aubooks-text: #333333;
+  --aubooks-text-muted: #595959;
+  --aubooks-text-subtle: #777777;
+
+  /* Links */
+  --aubooks-link: #176b60;
+  --aubooks-link-hover: #145c52;
+  --aubooks-link-muted: #595959;
+
+  /* Borders */
+  --aubooks-border: #dddddd;
+  --aubooks-border-strong: #cccccc;
+
+  /* Focus */
+  --aubooks-focus: #111111;
+  --aubooks-focus-ring: #ffd600;
+
+  /* Accent */
+  --aubooks-accent: #337ab7;
+  --aubooks-on-accent: #ffffff;
+
+  /* Controls */
+  --aubooks-control-bg: #ffffff;
+  --aubooks-placeholder: #999999;
+
+  /* Semantic */
+  --aubooks-success: #5cb85c;
+  --aubooks-success-surface: #dff0d8;
+  --aubooks-success-text: #3c763d;
+  --aubooks-warning: #f0ad4e;
+  --aubooks-warning-surface: #fcf8e3;
+  --aubooks-warning-text: #8a6d3b;
+  --aubooks-danger: #d9534f;
+  --aubooks-danger-surface: #f2dede;
+  --aubooks-danger-text: #a94442;
+  --aubooks-info: #5bc0de;
+  --aubooks-info-surface: #d9edf7;
+  --aubooks-info-text: #31708f;
+
+  /* Drag state */
+  --aubooks-drag-bg: #e6e6e6;
+
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   2. Dark palette
+   ========================================================================== */
+
+[data-theme="dark"] {
+  /* Page & surfaces */
+  --aubooks-bg: #121212;
+  --aubooks-surface: #1e1e1e;
+  --aubooks-surface-raised: #252525;
+  --aubooks-surface-hover: #2a2a2a;
+
+  /* Text */
+  --aubooks-text: #e0e0e0;
+  --aubooks-text-muted: #a0a0a0;
+  --aubooks-text-subtle: #808080;
+
+  /* Links */
+  --aubooks-link: #4db8a4;
+  --aubooks-link-hover: #6dcdb8;
+  --aubooks-link-muted: #a0a0a0;
+
+  /* Borders */
+  --aubooks-border: #333333;
+  --aubooks-border-strong: #444444;
+
+  /* Focus */
+  --aubooks-focus: #e0e0e0;
+  --aubooks-focus-ring: #ffd600;
+
+  /* Accent */
+  --aubooks-accent: #5ba3d9;
+  --aubooks-on-accent: #ffffff;
+
+  /* Controls */
+  --aubooks-control-bg: #2a2a2a;
+  --aubooks-placeholder: #777777;
+
+  /* Semantic */
+  --aubooks-success: #6fbf73;
+  --aubooks-success-surface: #1a2e1a;
+  --aubooks-success-text: #8fd48f;
+  --aubooks-warning: #e0a84e;
+  --aubooks-warning-surface: #2e2a1a;
+  --aubooks-warning-text: #d4b96a;
+  --aubooks-danger: #d46a6a;
+  --aubooks-danger-surface: #2e1a1a;
+  --aubooks-danger-text: #e88888;
+  --aubooks-info: #5ba8c4;
+  --aubooks-info-surface: #1a2a2e;
+  --aubooks-info-text: #8ac4d8;
+
+  /* Drag state */
+  --aubooks-drag-bg: #2a2a2a;
+
+  color-scheme: dark;
+}
+
+/* No-JS system dark: applies when data-theme attribute is absent */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --aubooks-bg: #121212;
+    --aubooks-surface: #1e1e1e;
+    --aubooks-surface-raised: #252525;
+    --aubooks-surface-hover: #2a2a2a;
+    --aubooks-text: #e0e0e0;
+    --aubooks-text-muted: #a0a0a0;
+    --aubooks-text-subtle: #808080;
+    --aubooks-link: #4db8a4;
+    --aubooks-link-hover: #6dcdb8;
+    --aubooks-link-muted: #a0a0a0;
+    --aubooks-border: #333333;
+    --aubooks-border-strong: #444444;
+    --aubooks-focus: #e0e0e0;
+    --aubooks-focus-ring: #ffd600;
+    --aubooks-accent: #5ba3d9;
+    --aubooks-on-accent: #ffffff;
+    --aubooks-control-bg: #2a2a2a;
+    --aubooks-placeholder: #777777;
+    --aubooks-success: #6fbf73;
+    --aubooks-success-surface: #1a2e1a;
+    --aubooks-success-text: #8fd48f;
+    --aubooks-warning: #e0a84e;
+    --aubooks-warning-surface: #2e2a1a;
+    --aubooks-warning-text: #d4b96a;
+    --aubooks-danger: #d46a6a;
+    --aubooks-danger-surface: #2e1a1a;
+    --aubooks-danger-text: #e88888;
+    --aubooks-info: #5ba8c4;
+    --aubooks-info-surface: #1a2a2e;
+    --aubooks-info-text: #8ac4d8;
+    --aubooks-drag-bg: #2a2a2a;
+    color-scheme: dark;
+  }
+}
+
+/* ==========================================================================
+   3. Foundation: page, body, text
+   ========================================================================== */
+
+html {
+  background-color: var(--aubooks-bg);
+  color-scheme: light;
+}
+
+[data-theme="dark"] html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--aubooks-bg);
+  color: var(--aubooks-text);
+}
+
+/* ==========================================================================
+   4. Skip link
+   ========================================================================== */
 
 .skip-link {
-  position: absolute;
-  top: 0;
-  left: 1rem;
-  z-index: 2000;
-  padding: 0.75rem 1rem;
-  transform: translateY(-150%);
-  border: 2px solid #111;
-  border-radius: 0 0 4px 4px;
-  background: #fff;
-  color: #111;
-  font-weight: 700;
+  border-color: var(--aubooks-focus);
+  background: var(--aubooks-surface);
+  color: var(--aubooks-focus);
 }
 
 .skip-link:focus,
@@ -19,15 +185,20 @@
   transform: translateY(0);
 }
 
+/* ==========================================================================
+   5. Focus indicators — dual ring, theme-aware
+   ========================================================================== */
+
 a:focus,
 button:focus,
 input:focus,
 select:focus,
 textarea:focus,
+[type="file"]:focus,
 [tabindex]:focus {
-  outline: 3px solid #111 !important;
+  outline: 3px solid var(--aubooks-focus) !important;
   outline-offset: 2px;
-  box-shadow: 0 0 0 5px #ffd600 !important;
+  box-shadow: 0 0 0 5px var(--aubooks-focus-ring) !important;
 }
 
 a:focus-visible,
@@ -35,21 +206,26 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
+[type="file"]:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid #111 !important;
+  outline: 3px solid var(--aubooks-focus) !important;
   outline-offset: 2px;
-  box-shadow: 0 0 0 5px #ffd600 !important;
+  box-shadow: 0 0 0 5px var(--aubooks-focus-ring) !important;
 }
 
 .btn-file input[type="file"]:focus {
-  outline: 3px solid #111 !important;
+  outline: 3px solid var(--aubooks-focus) !important;
 }
 
 .btn-file:focus-within {
-  outline: 3px solid #111;
+  outline: 3px solid var(--aubooks-focus);
   outline-offset: 2px;
-  box-shadow: 0 0 0 5px #ffd600;
+  box-shadow: 0 0 0 5px var(--aubooks-focus-ring);
 }
+
+/* ==========================================================================
+   6. Links and brand
+   ========================================================================== */
 
 a,
 .danger,
@@ -57,19 +233,37 @@ a,
 .editable-empty,
 .editable-empty:hover,
 .btn-default:hover {
-  color: #176b60;
+  color: var(--aubooks-link);
+}
+
+a:hover {
+  color: var(--aubooks-link-hover);
 }
 
 .navbar-brand {
-  color: #176b60 !important;
+  color: var(--aubooks-link) !important;
 }
+
+/* ==========================================================================
+   7. Navigation and sidebar
+   ========================================================================== */
 
 .navigation .create-shelf a {
-  background-color: #176b60;
-  color: #fff;
+  background-color: var(--aubooks-link);
+  color: var(--aubooks-on-accent);
 }
 
+.container-fluid .book .meta .author,
+.navigation .nav-head {
+  color: var(--aubooks-text-muted);
+}
+
+/* ==========================================================================
+   8. Main content links
+   ========================================================================== */
+
 .aubooks-main a:not(.btn) {
+  color: var(--aubooks-link);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
@@ -77,13 +271,13 @@ a,
 
 .aubooks-main a:not(.btn):hover,
 .aubooks-main a:not(.btn):focus {
+  color: var(--aubooks-link-hover);
   text-decoration-thickness: 2px;
 }
 
-.container-fluid .book .meta .author,
-.navigation .nav-head {
-  color: #595959;
-}
+/* ==========================================================================
+   9. Main and sidebar layout
+   ========================================================================== */
 
 .aubooks-main,
 .aubooks-sidebar {
@@ -95,17 +289,25 @@ a,
   scroll-margin-top: 1rem;
 }
 
+/* ==========================================================================
+   10. Footer
+   ========================================================================== */
+
 .aubooks-footer {
   clear: both;
   margin-top: 2rem;
   padding: 1rem 15px;
-  border-top: 1px solid #aaa;
-  color: #444;
+  border-top: 1px solid var(--aubooks-border-strong);
+  color: var(--aubooks-text-muted);
 }
 
 .aubooks-footer p {
   margin: 0;
 }
+
+/* ==========================================================================
+   11. Book cards
+   ========================================================================== */
 
 .aubooks-book-card .title {
   margin: 0 0 0.35rem;
@@ -115,6 +317,7 @@ a,
 .aubooks-book-card .title a {
   display: inline;
   font-size: 15px;
+  color: var(--aubooks-link);
 }
 
 .aubooks-book-card .formats,
@@ -125,6 +328,10 @@ a,
 .aubooks-meta-label {
   font-weight: 700;
 }
+
+/* ==========================================================================
+   12. Sort and filter controls
+   ========================================================================== */
 
 .aubooks-sort-controls,
 .aubooks-filter-controls {
@@ -139,22 +346,30 @@ a,
   margin-bottom: 0;
 }
 
+/* ==========================================================================
+   13. Dropdown actions
+   ========================================================================== */
+
 .aubooks-dropdown-action {
   display: block;
   width: 100%;
   padding: 3px 20px;
   border: 0;
   background: transparent;
-  color: #333;
+  color: var(--aubooks-text);
   text-align: left;
   white-space: nowrap;
 }
 
 .aubooks-dropdown-action:hover,
 .aubooks-dropdown-action:focus {
-  background-color: #f5f5f5;
-  color: #176b60;
+  background-color: var(--aubooks-surface-hover);
+  color: var(--aubooks-link);
 }
+
+/* ==========================================================================
+   14. Cover button
+   ========================================================================== */
 
 .aubooks-cover-button {
   display: block;
@@ -164,7 +379,15 @@ a,
   background: transparent;
 }
 
-/* Text-only book cards (no cover images on catalog pages). */
+.aubooks-cover-button img[data-failed="true"],
+.aubooks-cover-button img:not([src]) {
+  display: none;
+}
+
+/* ==========================================================================
+   15. Text-only book cards
+   ========================================================================== */
+
 .aubooks-text-only {
   padding: 0.5rem 0;
 }
@@ -177,10 +400,14 @@ a,
   width: 100%;
 }
 
+/* ==========================================================================
+   16. Catalog book entries
+   ========================================================================== */
+
 .aubooks-catalog-book {
   width: 100%;
   padding: 1.25rem 0;
-  border-bottom: 1px solid #b8b8b8;
+  border-bottom: 1px solid var(--aubooks-border);
   overflow-wrap: anywhere;
 }
 
@@ -197,6 +424,7 @@ a,
 .aubooks-catalog-book .title a {
   display: inline-block;
   padding: 0.15rem 0;
+  color: var(--aubooks-link);
 }
 
 .aubooks-catalog-book .author,
@@ -210,8 +438,12 @@ a,
 }
 
 .aubooks-book-metadata {
-  color: #555;
+  color: var(--aubooks-text-muted);
 }
+
+/* ==========================================================================
+   17. Book annotations
+   ========================================================================== */
 
 .aubooks-book-annotation {
   max-height: 9.3em;
@@ -230,6 +462,65 @@ a,
   margin-bottom: 0;
 }
 
+/* ==========================================================================
+   18. Directory list
+   ========================================================================== */
+
+.aubooks-directory-entry {
+  padding-block: 0.25rem;
+}
+
+/* ==========================================================================
+   19. Modal title
+   ========================================================================== */
+
+.modal-title {
+  line-height: 1.3;
+}
+
+/* ==========================================================================
+   20. Theme selector in navbar
+   ========================================================================== */
+
+.aubooks-theme-control {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 10px 15px;
+}
+
+.aubooks-theme-control label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--aubooks-text-muted);
+  white-space: nowrap;
+}
+
+.aubooks-theme-control select {
+  max-width: 120px;
+  padding: 2px 4px;
+  font-size: 13px;
+}
+
+/* ==========================================================================
+   21. Reduced motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   22. Responsive
+   ========================================================================== */
+
 @media (max-width: 767px) {
   .aubooks-catalog-book {
     padding: 1rem 0;
@@ -242,18 +533,883 @@ a,
   .aubooks-book-annotation {
     font-size: 16px;
   }
+
+  .aubooks-theme-control {
+    padding: 8px 15px;
+  }
 }
 
-/* Detail cover: graceful fallback when image fails to load or is deferred. */
-.aubooks-cover-button img[data-failed="true"],
-.aubooks-cover-button img:not([src]) {
-  display: none;
+/* ==========================================================================
+   23. Drag-and-drop overlay state
+   ========================================================================== */
+
+.container-fluid.drag-over {
+  background: var(--aubooks-drag-bg);
 }
 
-.aubooks-directory-entry {
-  padding-block: 0.25rem;
+/* ==========================================================================
+   24. Dark mode — Bootstrap component overrides
+   ========================================================================== */
+
+[data-theme="dark"] body {
+  color: var(--aubooks-text);
 }
 
-.modal-title {
-  line-height: 1.3;
+/* --- Navbar --- */
+
+[data-theme="dark"] .navbar-default {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .navbar-default .navbar-nav > li > a {
+  color: var(--aubooks-text-muted);
+}
+
+[data-theme="dark"] .navbar-default .navbar-nav > li > a:hover,
+[data-theme="dark"] .navbar-default .navbar-nav > li > a:focus {
+  color: var(--aubooks-text);
+  background-color: var(--aubooks-surface-hover);
+}
+
+[data-theme="dark"] .navbar-default .navbar-nav > .active > a,
+[data-theme="dark"] .navbar-default .navbar-nav > .active > a:hover,
+[data-theme="dark"] .navbar-default .navbar-nav > .active > a:focus {
+  color: var(--aubooks-text);
+  background-color: var(--aubooks-surface-hover);
+}
+
+[data-theme="dark"] .navbar-default .navbar-nav > .open > a,
+[data-theme="dark"] .navbar-default .navbar-nav > .open > a:hover,
+[data-theme="dark"] .navbar-default .navbar-nav > .open > a:focus {
+  color: var(--aubooks-text);
+  background-color: var(--aubooks-surface-hover);
+}
+
+[data-theme="dark"] .navbar-default .navbar-toggle {
+  border-color: var(--aubooks-border-strong);
+}
+
+[data-theme="dark"] .navbar-default .navbar-toggle:hover,
+[data-theme="dark"] .navbar-default .navbar-toggle:focus {
+  background-color: var(--aubooks-surface-hover);
+}
+
+[data-theme="dark"] .navbar-default .navbar-toggle .icon-bar {
+  background-color: var(--aubooks-text-muted);
+}
+
+[data-theme="dark"] .navbar-default .navbar-collapse {
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .navbar-default .navbar-form {
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .navbar-form .form-control {
+  background-color: var(--aubooks-control-bg);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .navbar-form .form-control:focus {
+  border-color: var(--aubooks-accent);
+}
+
+/* --- Forms --- */
+
+[data-theme="dark"] .form-control {
+  background-color: var(--aubooks-control-bg);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .form-control:focus {
+  border-color: var(--aubooks-accent);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .form-control::placeholder {
+  color: var(--aubooks-placeholder);
+}
+
+[data-theme="dark"] .form-control[disabled],
+[data-theme="dark"] .form-control[readonly],
+[data-theme="dark"] .form-control[disabled] {
+  background-color: var(--aubooks-surface-raised);
+  color: var(--aubooks-text-subtle);
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .input-group-addon {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text-muted);
+}
+
+[data-theme="dark"] select.form-control {
+  background-color: var(--aubooks-control-bg);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] textarea.form-control {
+  background-color: var(--aubooks-control-bg);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+/* --- Labels --- */
+
+[data-theme="dark"] .label-default {
+  background-color: var(--aubooks-surface-hover);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .label-primary {
+  background-color: var(--aubooks-accent);
+  color: var(--aubooks-on-accent);
+}
+
+[data-theme="dark"] .label-success {
+  background-color: var(--aubooks-success);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .label-info {
+  background-color: var(--aubooks-info);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .label-warning {
+  background-color: var(--aubooks-warning);
+  color: #000000;
+}
+
+[data-theme="dark"] .label-danger {
+  background-color: var(--aubooks-danger);
+  color: #ffffff;
+}
+
+/* --- Buttons --- */
+
+[data-theme="dark"] .btn-default {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .btn-default:hover,
+[data-theme="dark"] .btn-default:focus {
+  background-color: var(--aubooks-surface-hover);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .btn-default:active,
+[data-theme="dark"] .btn-default.active {
+  background-color: var(--aubooks-surface-hover);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .btn-default[disabled],
+[data-theme="dark"] .btn-default.disabled {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border);
+  color: var(--aubooks-text-subtle);
+}
+
+[data-theme="dark"] .open > .dropdown-toggle.btn-default {
+  background-color: var(--aubooks-surface-hover);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .btn-primary {
+  background-color: var(--aubooks-accent);
+  border-color: var(--aubooks-accent);
+  color: var(--aubooks-on-accent);
+}
+
+[data-theme="dark"] .btn-primary:hover,
+[data-theme="dark"] .btn-primary:focus {
+  background-color: var(--aubooks-link);
+  border-color: var(--aubooks-link);
+  color: var(--aubooks-on-accent);
+}
+
+[data-theme="dark"] .btn-primary:active,
+[data-theme="dark"] .btn-primary.active {
+  background-color: var(--aubooks-link-hover);
+  border-color: var(--aubooks-link-hover);
+  color: var(--aubooks-on-accent);
+}
+
+[data-theme="dark"] .btn-primary[disabled],
+[data-theme="dark"] .btn-primary.disabled {
+  background-color: var(--aubooks-text-subtle);
+  border-color: var(--aubooks-text-subtle);
+  color: var(--aubooks-surface-raised);
+}
+
+[data-theme="dark"] .btn-success {
+  background-color: var(--aubooks-success);
+  border-color: var(--aubooks-success);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn-warning {
+  background-color: var(--aubooks-warning);
+  border-color: var(--aubooks-warning);
+  color: #000000;
+}
+
+[data-theme="dark"] .btn-danger {
+  background-color: var(--aubooks-danger);
+  border-color: var(--aubooks-danger);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn-info {
+  background-color: var(--aubooks-info);
+  border-color: var(--aubooks-info);
+  color: #ffffff;
+}
+
+/* --- Dropdowns --- */
+
+[data-theme="dark"] .dropdown-menu {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .dropdown-menu > li > a {
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .dropdown-menu > li > a:hover,
+[data-theme="dark"] .dropdown-menu > li > a:focus {
+  background-color: var(--aubooks-surface-hover);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .dropdown-menu > .active > a,
+[data-theme="dark"] .dropdown-menu > .active > a:hover,
+[data-theme="dark"] .dropdown-menu > .active > a:focus {
+  background-color: var(--aubooks-accent);
+  color: var(--aubooks-on-accent);
+}
+
+[data-theme="dark"] .dropdown-menu > .disabled > a,
+[data-theme="dark"] .dropdown-menu > .disabled > a:hover,
+[data-theme="dark"] .dropdown-menu > .disabled > a:focus {
+  color: var(--aubooks-text-subtle);
+}
+
+[data-theme="dark"] .dropdown-divider,
+[data-theme="dark"] .divider {
+  background-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .caret {
+  border-top-color: var(--aubooks-text-muted);
+  border-bottom-color: var(--aubooks-text-muted);
+}
+
+/* --- Modals --- */
+
+[data-theme="dark"] .modal-content {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border-strong);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="dark"] .modal-header {
+  border-bottom-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .modal-header .close {
+  color: var(--aubooks-text-muted);
+  text-shadow: none;
+  opacity: 0.8;
+}
+
+[data-theme="dark"] .modal-header .close:hover {
+  color: var(--aubooks-text);
+  opacity: 1;
+}
+
+[data-theme="dark"] .modal-footer {
+  border-top-color: var(--aubooks-border);
+  background-color: var(--aubooks-surface);
+}
+
+[data-theme="dark"] .modal-backdrop.in {
+  opacity: 0.7;
+}
+
+[data-theme="dark"] .modal-backdrop {
+  background-color: #000000;
+}
+
+/* --- Pagination --- */
+
+[data-theme="dark"] .pagination > li > a,
+[data-theme="dark"] .pagination > li > span {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-link);
+}
+
+[data-theme="dark"] .pagination > li > a:hover,
+[data-theme="dark"] .pagination > li > span:hover,
+[data-theme="dark"] .pagination > li > a:focus,
+[data-theme="dark"] .pagination > li > span:focus {
+  background-color: var(--aubooks-surface-hover);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-link-hover);
+}
+
+[data-theme="dark"] .pagination > .active > a,
+[data-theme="dark"] .pagination > .active > span,
+[data-theme="dark"] .pagination > .active > a:hover,
+[data-theme="dark"] .pagination > .active > span:hover {
+  background-color: var(--aubooks-accent);
+  border-color: var(--aubooks-accent);
+  color: var(--aubooks-on-accent);
+}
+
+[data-theme="dark"] .pagination > .disabled > a,
+[data-theme="dark"] .pagination > .disabled > span,
+[data-theme="dark"] .pagination > .disabled > a:hover,
+[data-theme="dark"] .pagination > .disabled > span:hover {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border);
+  color: var(--aubooks-text-subtle);
+}
+
+/* --- Alerts --- */
+
+[data-theme="dark"] .alert-success {
+  background-color: var(--aubooks-success-surface);
+  border-color: var(--aubooks-success);
+  color: var(--aubooks-success-text);
+}
+
+[data-theme="dark"] .alert-info {
+  background-color: var(--aubooks-info-surface);
+  border-color: var(--aubooks-info);
+  color: var(--aubooks-info-text);
+}
+
+[data-theme="dark"] .alert-warning {
+  background-color: var(--aubooks-warning-surface);
+  border-color: var(--aubooks-warning);
+  color: var(--aubooks-warning-text);
+}
+
+[data-theme="dark"] .alert-danger {
+  background-color: var(--aubooks-danger-surface);
+  border-color: var(--aubooks-danger);
+  color: var(--aubooks-danger-text);
+}
+
+/* --- Breadcrumbs --- */
+
+[data-theme="dark"] .breadcrumb {
+  background-color: var(--aubooks-surface-raised);
+}
+
+[data-theme="dark"] .breadcrumb > li + li::before {
+  color: var(--aubooks-text-subtle);
+}
+
+[data-theme="dark"] .breadcrumb > .active {
+  color: var(--aubooks-text-muted);
+}
+
+/* --- Tables --- */
+
+[data-theme="dark"] .table > thead > tr > th,
+[data-theme="dark"] .table > tbody > tr > td {
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) {
+  background-color: var(--aubooks-surface-raised);
+}
+
+[data-theme="dark"] .table-hover > tbody > tr:hover {
+  background-color: var(--aubooks-surface-hover);
+}
+
+[data-theme="dark"] .table-bordered,
+[data-theme="dark"] .table-bordered > thead > tr > th,
+[data-theme="dark"] .table-bordered > tbody > tr > td {
+  border-color: var(--aubooks-border);
+}
+
+/* --- Panels --- */
+
+[data-theme="dark"] .panel {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .panel-heading {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .panel-body {
+  background-color: var(--aubooks-surface);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .panel-footer {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .panel-default > .panel-heading {
+  color: var(--aubooks-text);
+}
+
+/* --- Wells --- */
+
+[data-theme="dark"] .well {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border);
+}
+
+/* --- List groups --- */
+
+[data-theme="dark"] .list-group-item {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .list-group-item:hover,
+[data-theme="dark"] .list-group-item:focus {
+  background-color: var(--aubooks-surface-hover);
+}
+
+[data-theme="dark"] .list-group-item.active,
+[data-theme="dark"] .list-group-item.active:hover,
+[data-theme="dark"] .list-group-item.active:focus {
+  background-color: var(--aubooks-accent);
+  border-color: var(--aubooks-accent);
+  color: var(--aubooks-on-accent);
+}
+
+/* --- Tooltips --- */
+
+[data-theme="dark"] .tooltip-inner {
+  background-color: var(--aubooks-surface-raised);
+  color: var(--aubooks-text);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .tooltip.top .tooltip-arrow {
+  border-top-color: var(--aubooks-surface-raised);
+}
+
+[data-theme="dark"] .tooltip.bottom .tooltip-arrow {
+  border-bottom-color: var(--aubooks-surface-raised);
+}
+
+[data-theme="dark"] .tooltip.left .tooltip-arrow {
+  border-left-color: var(--aubooks-surface-raised);
+}
+
+[data-theme="dark"] .tooltip.right .tooltip-arrow {
+  border-right-color: var(--aubooks-surface-raised);
+}
+
+/* --- Popovers --- */
+
+[data-theme="dark"] .popover {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border-strong);
+}
+
+[data-theme="dark"] .popover-title {
+  background-color: var(--aubooks-surface-raised);
+  border-bottom-color: var(--aubooks-border);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .popover-content {
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .popover.top > .arrow:after {
+  border-top-color: var(--aubooks-surface);
+}
+
+[data-theme="dark"] .popover.bottom > .arrow:after {
+  border-bottom-color: var(--aubooks-surface);
+}
+
+[data-theme="dark"] .popover.left > .arrow:after {
+  border-left-color: var(--aubooks-surface);
+}
+
+[data-theme="dark"] .popover.right > .arrow:after {
+  border-right-color: var(--aubooks-surface);
+}
+
+/* --- Close button --- */
+
+[data-theme="dark"] .close {
+  color: var(--aubooks-text-muted);
+  text-shadow: none;
+  opacity: 0.7;
+}
+
+[data-theme="dark"] .close:hover,
+[data-theme="dark"] .close:focus {
+  color: var(--aubooks-text);
+  opacity: 1;
+}
+
+/* --- Dividers --- */
+
+[data-theme="dark"] hr {
+  border-top-color: var(--aubooks-border);
+}
+
+/* --- Badges --- */
+
+[data-theme="dark"] .badge {
+  background-color: var(--aubooks-text-subtle);
+  color: var(--aubooks-surface);
+}
+
+/* ==========================================================================
+   25. Dark mode — Plugin overrides
+   ========================================================================== */
+
+/* --- Typeahead --- */
+
+[data-theme="dark"] .tt-menu {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border-strong);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .tt-suggestion,
+[data-theme="dark"] .tt-suggestion.tt-cursor,
+[data-theme="dark"] .tt-suggestion:hover,
+[data-theme="dark"] .tt-suggestion:focus {
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .tt-suggestion.tt-cursor,
+[data-theme="dark"] .tt-suggestion:hover {
+  background-color: var(--aubooks-surface-hover);
+}
+
+[data-theme="dark"] .tt-hint {
+  color: var(--aubooks-placeholder);
+}
+
+/* --- Datepicker --- */
+
+[data-theme="dark"] .datepicker {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border-strong);
+}
+
+[data-theme="dark"] .datepicker table tr td,
+[data-theme="dark"] .datepicker table tr th {
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .datepicker table tr td:hover {
+  background-color: var(--aubooks-surface-hover);
+}
+
+[data-theme="dark"] .datepicker table tr td.active,
+[data-theme="dark"] .datepicker table tr td.active:hover,
+[data-theme="dark"] .datepicker table tr td.active.active:hover,
+[data-theme="dark"] .datepicker table tr td span.active,
+[data-theme="dark"] .datepicker table tr td span.active:hover,
+[data-theme="dark"] .datepicker table tr td span.active.active:hover {
+  background-color: var(--aubooks-accent);
+  color: var(--aubooks-on-accent);
+}
+
+[data-theme="dark"] .datepicker table tr td.today,
+[data-theme="dark"] .datepicker table tr td.today:hover {
+  background-color: var(--aubooks-warning-surface);
+  color: var(--aubooks-warning-text);
+}
+
+[data-theme="dark"] .datepicker table tr td.disabled,
+[data-theme="dark"] .datepicker table tr td.disabled:hover {
+  color: var(--aubooks-text-subtle);
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .datepicker table tr td.old,
+[data-theme="dark"] .datepicker table tr td.new {
+  color: var(--aubooks-text-subtle);
+}
+
+[data-theme="dark"] .datepicker .datepicker-switch:hover,
+[data-theme="dark"] .datepicker .prev:hover,
+[data-theme="dark"] .datepicker .next:hover,
+[data-theme="dark"] .datepicker tfoot tr th:hover {
+  background-color: var(--aubooks-surface-hover);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .datepicker dropdown-menu {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border-strong);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+/* --- Bootstrap Select --- */
+
+[data-theme="dark"] .bootstrap-select .dropdown-toggle {
+  background-color: var(--aubooks-control-bg);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .bootstrap-select .dropdown-menu {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .bootstrap-select .dropdown-menu > li > a {
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .bootstrap-select .dropdown-menu > li > a:hover,
+[data-theme="dark"] .bootstrap-select .dropdown-menu > li > a:focus {
+  background-color: var(--aubooks-surface-hover);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .bootstrap-select .dropdown-menu > li.selected > a,
+[data-theme="dark"] .bootstrap-select .dropdown-menu > li.selected > a:hover {
+  background-color: var(--aubooks-accent);
+  color: var(--aubooks-on-accent);
+}
+
+[data-theme="dark"] .bootstrap-select .dropdown-menu > li.disabled > a {
+  color: var(--aubooks-text-subtle);
+}
+
+[data-theme="dark"] .bootstrap-select .bs-searchbox input {
+  background-color: var(--aubooks-control-bg);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+/* --- Bootstrap Table --- */
+
+[data-theme="dark"] .bootstrap-table .fixed-table-container {
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .bootstrap-table .fixed-table-container .table {
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .bootstrap-table .fixed-table-container .table th {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .bootstrap-table .fixed-table-container .table td {
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .bootstrap-table .fixed-table-toolbar {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .bootstrap-table .fixed-table-toolbar .search input {
+  background-color: var(--aubooks-control-bg);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .bootstrap-table .fixed-table-pagination {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .bootstrap-table .fixed-table-loading {
+  background-color: var(--aubooks-surface);
+  color: var(--aubooks-text);
+}
+
+/* --- Bootstrap Editable --- */
+
+[data-theme="dark"] .editable,
+[data-theme="dark"] .editable:hover {
+  color: var(--aubooks-link);
+  cursor: pointer;
+  background-color: transparent;
+}
+
+[data-theme="dark"] .editable-empty,
+[data-theme="dark"] .editable-empty:hover {
+  color: var(--aubooks-link-muted);
+}
+
+[data-theme="dark"] .editableform .form-control {
+  background-color: var(--aubooks-control-bg);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+/* --- WYSIHTML5 --- */
+
+[data-theme="dark"] .wysihtml5-toolbar {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .wysihtml5-toolbar .btn {
+  background-color: var(--aubooks-surface);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .wysihtml5-toolbar .btn:hover {
+  background-color: var(--aubooks-surface-hover);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .wysihtml5-sandbox {
+  background-color: var(--aubooks-control-bg) !important;
+  color: var(--aubooks-text) !important;
+  border-color: var(--aubooks-border-strong) !important;
+}
+
+/* ==========================================================================
+   26. Dark mode — Specific AU component overrides
+   ========================================================================== */
+
+/* Sidebar */
+[data-theme="dark"] .aubooks-sidebar {
+  background-color: var(--aubooks-surface);
+  border-right-color: var(--aubooks-border);
+}
+
+[data-theme="dark"] .navigation li a {
+  color: var(--aubooks-text-muted);
+}
+
+[data-theme="dark"] .navigation li a:hover {
+  color: var(--aubooks-text);
+  background-color: var(--aubooks-surface-hover);
+}
+
+[data-theme="dark"] .navigation li.active > a {
+  color: var(--aubooks-text);
+  background-color: var(--aubooks-surface-hover);
+}
+
+/* Sidebar badges */
+[data-theme="dark"] .navigation .badge {
+  background-color: var(--aubooks-text-subtle);
+  color: var(--aubooks-surface);
+}
+
+/* Search form in navbar */
+[data-theme="dark"] .navbar-form .btn-default {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border-strong);
+  color: var(--aubooks-text);
+}
+
+[data-theme="dark"] .navbar-form .btn-default:hover {
+  background-color: var(--aubooks-surface-hover);
+  color: var(--aubooks-text);
+}
+
+/* Flash messages */
+[data-theme="dark"] #flash_danger {
+  background-color: var(--aubooks-danger-surface);
+  border-color: var(--aubooks-danger);
+  color: var(--aubooks-danger-text);
+}
+
+[data-theme="dark"] #flash_success {
+  background-color: var(--aubooks-success-surface);
+  border-color: var(--aubooks-success);
+  color: var(--aubooks-success-text);
+}
+
+[data-theme="dark"] #flash_info {
+  background-color: var(--aubooks-info-surface);
+  border-color: var(--aubooks-info);
+  color: var(--aubooks-info-text);
+}
+
+[data-theme="dark"] #flash_warning {
+  background-color: var(--aubooks-warning-surface);
+  border-color: var(--aubooks-warning);
+  color: var(--aubooks-warning-text);
+}
+
+/* Login well */
+[data-theme="dark"] .well {
+  background-color: var(--aubooks-surface-raised);
+  border-color: var(--aubooks-border);
+}
+
+/* Detail page */
+[data-theme="dark"] .breadcrumb {
+  background-color: var(--aubooks-surface-raised);
+  color: var(--aubooks-text-muted);
+}
+
+[data-theme="dark"] .more-stuff {
+  border-top-color: var(--aubooks-border);
+}
+
+/* Tooltip fix for style.css override */
+[data-theme="dark"] .tooltip.bottom .tooltip-inner {
+  background-color: var(--aubooks-surface-raised);
+  color: var(--aubooks-text);
+}
+
+/* Scrollbar (Chromium/WebKit) */
+[data-theme="dark"] ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: var(--aubooks-bg);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--aubooks-text-subtle);
+  border-radius: 6px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--aubooks-text-muted);
+}
+
+/* Placeholder for scrollbar edge */
+[data-theme="dark"] ::-webkit-scrollbar-corner {
+  background: var(--aubooks-bg);
 }

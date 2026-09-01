@@ -5,6 +5,17 @@
   <head>
     <title>{% if seo_title %}{{seo_title}}{% else %}{{instance}} | {{title}}{% endif %}</title>
     <meta charset="utf-8">
+    <script>
+    (function(){
+      var k="aubooks-theme",t;
+      try{t=localStorage.getItem(k)}catch(e){}
+      if(!t||t==="system"||t!=="light"&&t!=="dark"){
+        var m=window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)");
+        t=(m&&m.matches)?"dark":"light";
+      }
+      document.documentElement.setAttribute("data-theme",t);
+    })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
     <meta name="mobile-web-app-capable" content="yes">
@@ -56,6 +67,14 @@
             </ul>
             {% endif %}
             <ul class="nav navbar-nav navbar-right" id="main-nav">
+              <li class="aubooks-theme-control">
+                <label for="aubooks-color-theme">{{_('Theme')}}</label>
+                <select id="aubooks-color-theme" name="aubooks-color-theme" aria-label="{{_('Theme')}}">
+                  <option value="system">{{_('System')}}</option>
+                  <option value="light">{{_('Light')}}</option>
+                  <option value="dark">{{_('Dark')}}</option>
+                </select>
+              </li>
               {% if current_user.is_authenticated or g.allow_anonymous %}
                 {% if current_user.role_upload() and g.allow_upload %}
                     <li>
