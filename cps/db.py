@@ -857,15 +857,18 @@ class CalibreDB:
 
     # Fill indexpage with all requested data from database
     def fill_indexpage(self, page, pagesize, database, db_filter, order,
-                       join_archive_read=False, config_read_column=0, *join):
+                       join_archive_read=False, config_read_column=0, *join, load_comments=False):
         return self.fill_indexpage_with_archived_books(page, database, pagesize, db_filter, order, False,
-                                                       join_archive_read, config_read_column, *join)
+                                                       join_archive_read, config_read_column, *join,
+                                                       load_comments=load_comments)
 
     def fill_indexpage_with_archived_books(self, page, database, pagesize, db_filter, order, allow_show_archived,
-                                           join_archive_read, config_read_column, *join):
+                                           join_archive_read, config_read_column, *join, load_comments=False):
         pagesize = pagesize or self.config.config_books_per_page
         if current_user.show_detail_random():
             random_query = self.generate_linked_query(config_read_column, database)
+            if load_comments:
+                random_query = random_query.options(selectinload(Books.comments))
             randm = (random_query.filter(self.common_filters(allow_show_archived))
                      .order_by(func.random())
                      .limit(self.config.config_random_books).all())
@@ -875,6 +878,8 @@ class CalibreDB:
             query = self.generate_linked_query(config_read_column, database)
         else:
             query = self.session.query(database)
+        if load_comments:
+            query = query.options(selectinload(Books.comments))
         off = int(int(pagesize) * (page - 1))
 
         indx = len(join)
@@ -1074,7 +1079,7 @@ class CalibreDB:
         return cc
 
     # read search results from calibre-database and return it (function is used for feed and simple search
-    def get_search_results(self, term, config, offset=None, order=None, limit=None, *join):
+    def get_search_results(self, term, config, offset=None, order=None, limit=None, *join, load_comments=False):
         order = order[0] if order else [Books.sort]
         pagination = None
 
@@ -1083,7 +1088,10 @@ class CalibreDB:
             limit_int = int(limit)
 
             # Use LIMIT+1 pattern to estimate total count without expensive count()
-            query = self.search_query(term, config, *join).order_by(*order)
+            query = self.search_query(term, config, *join)
+            if load_comments:
+                query = query.options(selectinload(Books.comments))
+            query = query.order_by(*order)
             result = query.limit(offset + limit_int + 1).all()
 
             # Check if there are more results
@@ -1098,7 +1106,10 @@ class CalibreDB:
             pagination = Pagination((offset / limit_int + 1), limit_int, result_count)
         else:
             # No pagination, fetch all results
-            result = self.search_query(term, config, *join).order_by(*order).all()
+            query = self.search_query(term, config, *join)
+            if load_comments:
+                query = query.options(selectinload(Books.comments))
+            result = query.order_by(*order).all()
             result_count = len(result)
 
         ub.store_combo_ids(result)

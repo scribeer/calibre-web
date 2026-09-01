@@ -5,8 +5,8 @@
 {% if current_user.show_detail_random() and page != 'discover' %}
 <section class="discover random-books" aria-labelledby="random-books-heading">
   <h2 id="random-books-heading">{{_('Discover (Random Books)')}}</h2>
-  <div class="row display-flex">
-    {% for entry in random %}{{ book_card(entry, heading_level=3, page=page) }}{% endfor %}
+  <div class="aubooks-book-list">
+    {% for entry in random %}{{ book_card(entry, heading_level=3, page=page, show_annotation=show_annotations|default(false)) }}{% endfor %}
   </div>
 </section>
 {% endif %}
@@ -37,8 +37,8 @@
     {% endif %}
   </nav>
   {% endif %}
-  <div class="row display-flex">
-    {% if entries and entries[0] %}{% for entry in entries %}{{ book_card(entry, heading_level=2, page=page) }}{% endfor %}{% endif %}
+  <div class="aubooks-book-list">
+    {% if entries and entries[0] %}{% for entry in entries %}{{ book_card(entry, heading_level=2, page=page, show_annotation=show_annotations|default(false)) }}{% endfor %}{% endif %}
   </div>
 </section>
 {% endblock %}

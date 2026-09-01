@@ -24,6 +24,7 @@ from flask_babel import format_date
 from flask_babel import gettext as _
 from sqlalchemy.sql.expression import func, not_, and_, or_, text, true
 from sqlalchemy.sql.functions import coalesce
+from sqlalchemy.orm import selectinload
 
 from . import logger, db, calibre_db, config, ub
 from .string_helper import strip_whitespaces
@@ -364,7 +365,7 @@ def render_adv_search_results(term, offset=None, order=None, limit=None):
             log.debug_or_exception(ex)
             flash(_("Error on search for custom columns, please restart Calibre-Web"), category="error")
 
-    q = q.order_by(*sort).all()
+    q = q.options(selectinload(db.Books.comments)).order_by(*sort).all()
     flask_session['query'] = json.dumps(term)
     ub.store_combo_ids(q)
     result_count = len(q)
@@ -424,7 +425,8 @@ def render_search_results(term, offset=None, order=None, limit=None):
                                                                           offset,
                                                                           order,
                                                                           limit,
-                                                                          *join)
+                                                                          *join,
+                                                                          load_comments=True)
     else:
         entries = list()
         order = [None, None]
@@ -440,5 +442,4 @@ def render_search_results(term, offset=None, order=None, limit=None):
                                  title=_("Search"),
                                  page="search",
                                  order=order[1])
-
 

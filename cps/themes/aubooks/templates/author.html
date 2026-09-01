@@ -25,23 +25,21 @@
     <a id="sort_{{sort_key}}" aria-label="{{sort_label}}" class="btn btn-primary{% if order == sort_key %} active{% endif %}" {% if order == sort_key %}aria-current="true"{% endif %} href="{{url_for('web.books_list', data='author', book_id=id, sort_param=sort_key)}}"><span class="glyphicon {{sort_icon}}" aria-hidden="true"></span><span class="sr-only">{{sort_label}}</span></a>
     {% endfor %}
   </nav>
-  <div class="row display-flex">
-    {% for entry in entries %}{{ book_card(entry, heading_level=3, page='author', link_authors=false) }}{% endfor %}
+  <div class="aubooks-book-list">
+    {% for entry in entries %}{{ book_card(entry, heading_level=3, page='author', link_authors=false, show_annotation=true) }}{% endfor %}
   </div>
 </section>
 {% if other_books and author is not none %}
 <section class="discover aubooks-external-books" aria-labelledby="more-by-heading">
   <h2 id="more-by-heading">{{_('More by')}} {{author.name.replace('|', ',')}}</h2>
-  <div class="row display-flex">
+  <div class="aubooks-book-list">
     {% for entry in other_books %}
-    <article class="col-sm-3 col-lg-2 col-xs-6 book session aubooks-book-card aubooks-text-only">
-      <div class="meta">
-        <h3 class="title"><a href="https://www.goodreads.com/book/show/{{entry.gid['#text']}}" target="_blank" rel="noopener">{{entry.title}}</a></h3>
-        <p class="author"><span class="aubooks-meta-label">{{_('Author')}}:</span>
-          {% for external_author in entry.authors %}<a class="author-name" href="https://www.goodreads.com/author/show/{{external_author.gid}}" target="_blank" rel="noopener">{{external_author.name.replace('|', ',')}}</a>{% if not loop.last %}, {% endif %}{% endfor %}
-        </p>
-        {% if entry.average_rating %}<p class="rating"><span class="aubooks-meta-label">{{_('Rating')}}:</span> {{entry.average_rating|formatfloat(1)}} / 5</p>{% endif %}
-      </div>
+    <article class="aubooks-catalog-book">
+      <h3 class="title"><a href="https://www.goodreads.com/book/show/{{entry.gid['#text']}}" target="_blank" rel="noopener">{{entry.title}}</a></h3>
+      <p class="author"><span class="aubooks-meta-label">{{_('Author')}}:</span>
+        {% for external_author in entry.authors %}<a class="author-name" href="https://www.goodreads.com/author/show/{{external_author.gid}}" target="_blank" rel="noopener">{{external_author.name.replace('|', ',')}}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+      {% if entry.average_rating %}<p class="rating"><span class="aubooks-meta-label">{{_('Rating')}}:</span> {{entry.average_rating|formatfloat(1)}} / 5</p>{% endif %}
     </article>
     {% endfor %}
   </div>

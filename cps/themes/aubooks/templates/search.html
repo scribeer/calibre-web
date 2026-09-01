@@ -55,8 +55,8 @@
     </nav>
   {% endif %}
   {% if entries|length > 0 %}
-  <div class="row display-flex">
-    {% for entry in entries %}{{ book_card(entry, heading_level=2, page=page) }}{% endfor %}
+  <div class="aubooks-book-list">
+    {% for entry in entries %}{{ book_card(entry, heading_level=2, page=page, show_annotation=true) }}{% endfor %}
   </div>
   {% endif %}
 </section>

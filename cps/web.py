@@ -374,7 +374,7 @@ def get_sort_function(sort_param, data):
     return order, sort_param
 
 
-def render_books_list(data, sort_param, book_id, page):
+def render_books_list(data, sort_param, book_id, page, text_catalog=False):
     order = get_sort_function(sort_param, data)
     if data == "rated":
         return render_rated_books(page, book_id, order=order)
@@ -418,9 +418,11 @@ def render_books_list(data, sort_param, book_id, page):
                                                                 True, config.config_read_column,
                                                                 db.books_series_link,
                                                                 db.Books.id == db.books_series_link.c.book,
-                                                                db.Series)
+                                                                db.Series,
+                                                                load_comments=text_catalog)
         return render_title_template('index.html', random=random, entries=entries, pagination=pagination,
-                                     title=_("Books"), page=website, order=order[1])
+                                     title=_("Books"), page=website, order=order[1],
+                                     show_annotations=text_catalog)
 
 
 def render_rated_books(page, book_id, order):
@@ -529,7 +531,8 @@ def render_author_books(page, author_id, order):
                                                         True, config.config_read_column,
                                                         db.books_series_link,
                                                         db.books_series_link.c.book == db.Books.id,
-                                                        db.Series)
+                                                        db.Series,
+                                                        load_comments=True)
     if entries is None or not len(entries):
         flash(_("Oops! Selected book is unavailable. File does not exist or is not accessible"),
               category="error")
@@ -597,7 +600,8 @@ def render_series_books(page, book_id, order):
                                                                 True, config.config_read_column,
                                                                 db.books_series_link,
                                                                 db.Books.id == db.books_series_link.c.book,
-                                                                db.Series)
+                                                                db.Series,
+                                                                load_comments=True)
         series_name = _("None")
     else:
         series_name = calibre_db.session.query(db.Series).filter(db.Series.id == book_id).first()
@@ -606,12 +610,14 @@ def render_series_books(page, book_id, order):
                                                                     db.Books,
                                                                     db.Books.series.any(db.Series.id == book_id),
                                                                     [order[0][0]],
-                                                                    True, config.config_read_column)
+                                                                    True, config.config_read_column,
+                                                                    load_comments=True)
             series_name = series_name.name
         else:
             abort(404)
     return render_title_template('index.html', random=random, pagination=pagination, entries=entries, id=book_id,
-                                 title=_("Series: %(serie)s", serie=series_name), page="series", order=order[1])
+                                 title=_("Series: %(serie)s", serie=series_name), page="series", order=order[1],
+                                 show_annotations=True)
 
 
 def render_ratings_books(page, book_id, order):
@@ -808,7 +814,7 @@ def render_archived_books(page, sort_param):
 @login_required_if_no_ano
 def index(page):
     sort_param = (request.args.get('sort') or 'stored').lower()
-    return render_books_list("newest", sort_param, 1, page)
+    return render_books_list("newest", sort_param, 1, page, text_catalog=True)
 
 
 @login_required_if_no_ano
