@@ -142,7 +142,34 @@
             <ul class="list-unstyled" id="scnd-nav" intent in-standard-append="nav.navigation" in-mobile-after="#main-nav" in-mobile-class="nav navbar-nav">
               <li class="nav-head hidden-xs">{{_('Browse')}}</li>
               {% for element in sidebar %}
-                {% if current_user.check_visibility(element['visibility']) and element['public'] %}
+                {% if element['id'] == 'cat' and aubooks_sidebar_genre_tree %}
+                  <li class="nav-head aubooks-sidebar-genres-heading">Категории</li>
+                  {% if current_user.check_visibility(element['visibility']) %}
+                  <li id="nav_cat"{% if page == 'catlist' %} class="active"{% endif %}><a href="{{url_for('web.category_list')}}"{% if page == 'catlist' %} aria-current="page"{% endif %}>Все категории</a></li>
+                  {% endif %}
+                  <li class="aubooks-sidebar-genres">
+                    <ul>
+                      {% for group in aubooks_sidebar_genre_tree %}
+                        {% set category_state = namespace(open=group.category in aubooks_sidebar_open_categories) %}
+                        {% for genre in group.genres %}
+                          {% if genre.tag_id == aubooks_sidebar_active_genre_id %}{% set category_state.open = true %}{% endif %}
+                        {% endfor %}
+                      <li>
+                        <details{% if category_state.open %} class="active-context" open{% endif %}>
+                          <summary>{{group.category}}</summary>
+                          {% if group.genres %}
+                          <ul>
+                            {% for genre in group.genres %}
+                            <li><a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=genre.tag_id)}}"{% if genre.tag_id == aubooks_sidebar_active_genre_id %} class="active" aria-current="page"{% elif genre.tag_id in aubooks_sidebar_related_genre_ids %} class="related"{% endif %}>{{genre.label}}</a></li>
+                            {% endfor %}
+                          </ul>
+                          {% endif %}
+                        </details>
+                      </li>
+                      {% endfor %}
+                    </ul>
+                  </li>
+                {% elif current_user.check_visibility(element['visibility']) and element['public'] %}
                     <li id="nav_{{element['id']}}" {% if page == element['page'] %}class="active"{% endif %}><a href="{% if element['no_param'] %}{{url_for(element['link'], data=element['page'])}}{%else%}{{url_for(element['link'], data=element['page'], sort_param='stored')}}{% endif %}"{% if page == element['page'] %} aria-current="page"{% endif %}><span class="glyphicon {{element['glyph']}}" aria-hidden="true"></span> {% if element['id'] == 'cat' %}Жанры{% else %}{{_(element['text'])}}{% endif %}</a></li>
                 {% endif %}
               {% endfor %}

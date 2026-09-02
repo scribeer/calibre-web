@@ -1145,6 +1145,7 @@ def category_list():
         entries = calibre_db.session.query(db.Tags, func.count('books_tags_link.book').label('count')) \
             .join(db.books_tags_link).join(db.Books).order_by(order).filter(calibre_db.common_filters()) \
             .group_by(db.Tags.id).all()
+        real_tag_entries = list(entries)
         no_tag_count = (calibre_db.session.query(db.Books)
                          .outerjoin(db.books_tags_link).outerjoin(db.Tags)
                         .filter(db.Tags.name == None)
@@ -1155,12 +1156,15 @@ def category_list():
         entries = sorted(entries, key=lambda x: x[0].name.lower(), reverse=not order_no)
         char_list = generate_char_list(entries)
         aubooks_genre_tree = None
+        aubooks_sidebar_genre_tree = None
         if get_active_theme_identifier() == "aubooks":
-            from .aubooks_genres import build_genre_tree
+            from .aubooks_genres import build_genre_tree, build_sidebar_genre_tree
             aubooks_genre_tree = build_genre_tree(entries)
+            aubooks_sidebar_genre_tree = build_sidebar_genre_tree([entry[0] for entry in real_tag_entries])
         return render_title_template('list.html', entries=entries, folder='web.books_list', charlist=char_list,
                                      title=_("Categories"), page="catlist", data="category", order=order_no,
-                                     aubooks_genre_tree=aubooks_genre_tree)
+                                     aubooks_genre_tree=aubooks_genre_tree,
+                                     aubooks_sidebar_genre_tree=aubooks_sidebar_genre_tree)
     else:
         abort(404)
 

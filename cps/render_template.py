@@ -35,6 +35,24 @@ def get_active_theme_identifier():
     return themes.get_theme_identifier(config.config_theme, request.blueprint)
 
 
+def _get_aubooks_sidebar_genre_tree():
+    if hasattr(g, "aubooks_sidebar_genre_tree"):
+        return g.aubooks_sidebar_genre_tree
+
+    from . import calibre_db, db
+    from .aubooks_genres import MAPPED_TAG_NAMES, build_sidebar_genre_tree
+
+    tags = (calibre_db.session.query(db.Tags)
+            .join(db.books_tags_link, db.books_tags_link.c.tag == db.Tags.id)
+            .join(db.Books, db.Books.id == db.books_tags_link.c.book)
+            .filter(db.Tags.name.in_(MAPPED_TAG_NAMES))
+            .filter(calibre_db.common_filters())
+            .group_by(db.Tags.id)
+            .all())
+    g.aubooks_sidebar_genre_tree = build_sidebar_genre_tree(tags)
+    return g.aubooks_sidebar_genre_tree
+
+
 def themed_render(template_name, **kwargs):
     active_theme = get_active_theme_identifier()
     try:
@@ -128,6 +146,17 @@ def get_sidebar_config(kwargs=None):
 # Returns the template for rendering and includes the instance name
 def render_title_template(*args, **kwargs):
     sidebar, simple = get_sidebar_config(kwargs)
+    if (get_active_theme_identifier() == "aubooks"
+            and (current_user.is_authenticated or g.allow_anonymous)):
+        if "aubooks_sidebar_genre_tree" not in kwargs:
+            kwargs["aubooks_sidebar_genre_tree"] = _get_aubooks_sidebar_genre_tree()
+        active_genre = kwargs.get("aubooks_genre") or {}
+        kwargs.setdefault("aubooks_sidebar_active_genre_id", active_genre.get("tag_id"))
+        genre_groups = kwargs.get("aubooks_genre_groups") or []
+        kwargs.setdefault("aubooks_sidebar_open_categories",
+                          [group["category"] for group in genre_groups])
+        kwargs.setdefault("aubooks_sidebar_related_genre_ids",
+                          [genre["tag_id"] for group in genre_groups for genre in group["genres"]])
     try:
         return themed_render(args[0],
                              instance=config.config_calibre_web_title,

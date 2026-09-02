@@ -6,6 +6,7 @@ from cps.aubooks_genres import (
     GENRES,
     UNKNOWN_CATEGORY,
     build_genre_tree,
+    build_sidebar_genre_tree,
     genre_for_tag,
     group_tags,
 )
@@ -91,6 +92,17 @@ class AubooksGenresTest(unittest.TestCase):
         self.assertEqual(tree[0]["genres"][0]["tag_id"], 12)
         self.assertEqual(tree[0]["genres"][0]["count"], 40)
         self.assertEqual(tree[1]["genres"][0]["label"], "Неизвестный жанр (custom_code)")
+
+    def test_sidebar_tree_has_all_categories_and_only_real_mapped_tags(self):
+        tree = build_sidebar_genre_tree([
+            tag(11, "sf_space"),
+            tag(12, "sf_action"),
+            tag(13, "custom_code"),
+        ])
+        self.assertEqual(len(tree), 21)
+        fantasy = next(group for group in tree if group["category"] == "Фантастика")
+        self.assertEqual([genre["tag_id"] for genre in fantasy["genres"]], [12, 11])
+        self.assertFalse(any(genre["tag_id"] == 13 for group in tree for genre in group["genres"]))
 
 
 if __name__ == "__main__":

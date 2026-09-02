@@ -191,6 +191,7 @@ body {
 
 a:focus,
 button:focus,
+summary:focus,
 input:focus,
 select:focus,
 textarea:focus,
@@ -203,6 +204,7 @@ textarea:focus,
 
 a:focus-visible,
 button:focus-visible,
+summary:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
@@ -266,6 +268,52 @@ a:hover {
 .container-fluid .book .meta .author,
 .navigation .nav-head {
   color: var(--aubooks-text-muted);
+}
+
+.aubooks-sidebar-genres-heading {
+  margin-top: 1rem;
+}
+
+.aubooks-sidebar-genres > ul,
+.aubooks-sidebar-genres details ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.aubooks-sidebar-genres summary {
+  padding: 0.55rem 0.75rem;
+  color: var(--aubooks-text-muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.aubooks-sidebar-genres summary:hover,
+.aubooks-sidebar-genres summary:focus {
+  background-color: var(--aubooks-surface-hover);
+  color: var(--aubooks-text);
+}
+
+.aubooks-sidebar-genres details.active-context > summary {
+  color: var(--aubooks-text);
+  font-weight: 700;
+}
+
+.navigation .aubooks-sidebar-genres li a,
+.aubooks-sidebar-genres li a {
+  padding: 0.45rem 0.75rem 0.45rem 1.5rem;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.aubooks-sidebar-genres a.active,
+.aubooks-sidebar-genres a.related {
+  border-left: 3px solid var(--aubooks-link);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 /* ==========================================================================
@@ -613,6 +661,18 @@ a:hover {
    ========================================================================== */
 
 @media (max-width: 767px) {
+  .aubooks-sidebar-genres {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .aubooks-sidebar-genres summary,
+  .navigation .aubooks-sidebar-genres li a,
+  .aubooks-sidebar-genres li a {
+    padding-top: 0.7rem;
+    padding-bottom: 0.7rem;
+  }
+
   .aubooks-navbar-search {
     clear: both;
     width: 100%;

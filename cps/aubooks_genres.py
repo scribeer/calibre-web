@@ -94,6 +94,7 @@ for _genre in GENRES.values():
         _LABEL_GENRES[_label] = _genre
 for _label in _DUPLICATE_LABELS:
     del _LABEL_GENRES[_label]
+MAPPED_TAG_NAMES = tuple(GENRES) + tuple(_LABEL_GENRES)
 
 
 def _public_unknown_label(name):
@@ -155,6 +156,24 @@ def build_genre_tree(entries):
     for category, genres in grouped.items():
         if not genres:
             continue
+        genres.sort(key=lambda item: item["label"].casefold())
+        tree.append({"category": category, "genres": genres})
+    return tree
+
+
+def build_sidebar_genre_tree(tags):
+    """Build all mapped categories from real tags without counts or unknowns."""
+    grouped = OrderedDict((category, []) for category in CATEGORIES)
+    seen = set()
+    for tag in tags:
+        genre = genre_for_tag(tag)
+        if not genre["mapped"] or genre["tag_id"] in seen:
+            continue
+        seen.add(genre["tag_id"])
+        grouped[genre["category"]].append(genre)
+
+    tree = []
+    for category, genres in grouped.items():
         genres.sort(key=lambda item: item["label"].casefold())
         tree.append({"category": category, "genres": genres})
     return tree
