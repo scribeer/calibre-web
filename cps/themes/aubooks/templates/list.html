@@ -1,5 +1,23 @@
 {% extends theme('layout.html') %}
 {% block body %}
+{% if data == 'category' and aubooks_genre_tree is not none %}
+<h1 class="{{page}}">Жанры</h1>
+<div class="aubooks-genre-directory">
+  {% for group in aubooks_genre_tree %}
+  <section class="aubooks-genre-section" aria-labelledby="genre-category-{{loop.index}}">
+    <h2 id="genre-category-{{loop.index}}">{{group.category}}</h2>
+    <ul>
+      {% for genre in group.genres %}
+      <li>
+        <a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=genre.tag_id)}}">{{genre.label}}</a>
+        <span class="badge" aria-label="{{_('Books')}}: {{genre.count}}">{{genre.count}}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+</div>
+{% else %}
 <h1 class="{{page}}">{{_(title)}}</h1>
 <div class="filterheader aubooks-filter-controls" role="group" aria-label="{{_(title)}}">
   <input type="hidden" name="csrf_token" value="{{csrf_token()}}">
@@ -25,5 +43,6 @@
   {% endfor %}
   </div>
 </div>
+{% endif %}
 {% endblock %}
-{% block js %}<script src="{{url_for('static', filename='js/filter_list.js')}}"></script>{% endblock %}
+{% block js %}{% if not (data == 'category' and aubooks_genre_tree is not none) %}<script src="{{url_for('static', filename='js/filter_list.js')}}"></script>{% endif %}{% endblock %}

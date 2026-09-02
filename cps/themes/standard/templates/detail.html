@@ -57,6 +57,7 @@
                 </div>
             {% endif %}
 
+            {% block book_tags %}
             {% if entry.tags|length > 0 %}
 
                 <div class="tags">
@@ -71,6 +72,7 @@
 
                 </div>
             {% endif %}
+            {% endblock %}
 
             {% if entry.publishers|length > 0 %}
                 <div class="publishers">

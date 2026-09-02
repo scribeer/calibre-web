@@ -1,7 +1,18 @@
 {% from theme('_book_card.html') import book_card with context %}
 {% extends theme('layout.html') %}
 {% block body %}
+{% if aubooks_genre %}
+<nav aria-label="Жанры">
+  <ol class="breadcrumb">
+    <li><a href="{{url_for('web.category_list')}}">Жанры</a></li>
+    <li>{{aubooks_genre.category}}</li>
+    <li aria-current="page">{{aubooks_genre.label}}</li>
+  </ol>
+</nav>
+<h1 id="catalog-heading">{{aubooks_genre.label}}</h1>
+{% else %}
 <h1 id="catalog-heading">{{title}}</h1>
+{% endif %}
 <section class="discover aubooks-catalog" aria-labelledby="catalog-heading">
   {% if page != 'discover' %}
   <nav class="filterheader aubooks-sort-controls" aria-label="{{_('Sort according to book date, newest first')}}">

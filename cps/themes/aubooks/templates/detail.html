@@ -10,6 +10,25 @@
     {% if seo_image %}<meta property="og:image" content="{{ seo_image }}">{% endif %}
     <script type="application/ld+json">{{ seo_json_ld|tojson }}</script>
 {% endblock %}
+{% block book_tags %}
+{% if aubooks_genre_groups %}
+<section class="aubooks-book-genres" aria-labelledby="book-genres-heading">
+  <h2 id="book-genres-heading">Жанры</h2>
+  <ul class="aubooks-genre-groups">
+    {% for group in aubooks_genre_groups %}
+    <li>
+      <span class="aubooks-genre-category">{{group.category}}</span>
+      <ul>
+        {% for genre in group.genres %}
+        <li><a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=genre.tag_id)}}">{{genre.label}}</a></li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}
 {% block body %}
 {% if not is_xhr %}
 <nav aria-label="{{_('Breadcrumb')}}">

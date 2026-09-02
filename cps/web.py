@@ -53,7 +53,7 @@ from .redirect import get_redirect_location
 from .cw_babel import get_available_locale
 from .usermanagement import login_required_if_no_ano
 from .kobo_sync_status import remove_synced_book
-from .render_template import render_title_template
+from .render_template import get_active_theme_identifier, render_title_template
 from .kobo_sync_status import change_archived_books
 from .services.worker import WorkerThread
 from .tasks_status import render_task_status
@@ -677,6 +677,7 @@ def render_formats_books(page, book_id, order):
 
 
 def render_category_books(page, book_id, order):
+    aubooks_genre = None
     if book_id == '-1':
         entries, random, pagination = calibre_db.fill_indexpage(page, 0,
                                                                 db.Books,
@@ -691,8 +692,8 @@ def render_category_books(page, book_id, order):
                                                                 db.Series)
         tagsname = _("None")
     else:
-        tagsname = calibre_db.session.query(db.Tags).filter(db.Tags.id == book_id).first()
-        if tagsname:
+        selected_tag = calibre_db.session.query(db.Tags).filter(db.Tags.id == book_id).first()
+        if selected_tag:
             entries, random, pagination = calibre_db.fill_indexpage(page, 0,
                                                                     db.Books,
                                                                     db.Books.tags.any(db.Tags.id == book_id),
@@ -702,11 +703,16 @@ def render_category_books(page, book_id, order):
                                                                     db.books_series_link,
                                                                     db.Books.id == db.books_series_link.c.book,
                                                                     db.Series)
-            tagsname = tagsname.name
+            tagsname = selected_tag.name
+            if get_active_theme_identifier() == "aubooks":
+                from .aubooks_genres import genre_for_tag
+                aubooks_genre = genre_for_tag(selected_tag)
+                tagsname = aubooks_genre["label"]
         else:
             abort(404)
     return render_title_template('index.html', random=random, entries=entries, pagination=pagination, id=book_id,
-                                 title=_("Category: %(name)s", name=tagsname), page="category", order=order[1])
+                                 title=_("Category: %(name)s", name=tagsname), page="category", order=order[1],
+                                 aubooks_genre=aubooks_genre)
 
 
 def render_language_books(page, name, order):
@@ -1148,8 +1154,13 @@ def category_list():
             entries.append([db.Category(_("None"), "-1"), no_tag_count])
         entries = sorted(entries, key=lambda x: x[0].name.lower(), reverse=not order_no)
         char_list = generate_char_list(entries)
+        aubooks_genre_tree = None
+        if get_active_theme_identifier() == "aubooks":
+            from .aubooks_genres import build_genre_tree
+            aubooks_genre_tree = build_genre_tree(entries)
         return render_title_template('list.html', entries=entries, folder='web.books_list', charlist=char_list,
-                                     title=_("Categories"), page="catlist", data="category", order=order_no)
+                                     title=_("Categories"), page="catlist", data="category", order=order_no,
+                                     aubooks_genre_tree=aubooks_genre_tree)
     else:
         abort(404)
 
@@ -1669,6 +1680,10 @@ def render_book_detail(book_id, canonical_route):
             book_in_shelves.append(sh.shelf)
 
         entry.tags = sort(entry.tags, key=lambda tag: tag.name)
+        aubooks_genre_groups = None
+        if get_active_theme_identifier() == "aubooks":
+            from .aubooks_genres import group_tags
+            aubooks_genre_groups = group_tags(entry.tags)
 
         entry.ordered_authors = calibre_db.order_authors([entry])
 
@@ -1693,6 +1708,7 @@ def render_book_detail(book_id, canonical_route):
                                      title=entry.title,
                                      books_shelfs=book_in_shelves,
                                      page="book",
+                                     aubooks_genre_groups=aubooks_genre_groups,
                                      **detail_context(entry, canonical_route))
     else:
         log.debug("Selected book is unavailable. File does not exist or is not accessible")
