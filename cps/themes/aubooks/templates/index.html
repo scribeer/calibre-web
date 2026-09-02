@@ -2,14 +2,24 @@
 {% extends theme('layout.html') %}
 {% block body %}
 {% if aubooks_genre %}
-<nav aria-label="Жанры">
+<nav aria-label="{{_('Breadcrumb')}}">
   <ol class="breadcrumb">
+    <li><a href="{{url_for('web.index')}}">{{_('Home')}}</a></li>
     <li><a href="{{url_for('web.category_list')}}">Жанры</a></li>
     <li>{{aubooks_genre.category}}</li>
-    <li aria-current="page">{{aubooks_genre.label}}</li>
+    <li class="active" aria-current="page">{{aubooks_genre.label}}</li>
   </ol>
 </nav>
 <h1 id="catalog-heading">{{aubooks_genre.label}}</h1>
+{% elif page == 'series' %}
+<nav aria-label="{{_('Breadcrumb')}}">
+  <ol class="breadcrumb">
+    <li><a href="{{url_for('web.index')}}">{{_('Home')}}</a></li>
+    <li><a href="{{url_for('web.series_list')}}">{{_('Series')}}</a></li>
+    <li class="active" aria-current="page">{{title}}</li>
+  </ol>
+</nav>
+<h1 id="catalog-heading">{{title}}</h1>
 {% else %}
 <h1 id="catalog-heading">{{title}}</h1>
 {% endif %}

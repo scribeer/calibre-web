@@ -33,8 +33,14 @@
 {% if not is_xhr %}
 <nav aria-label="{{_('Breadcrumb')}}">
   <ol class="breadcrumb">
-    <li><a href="{{ url_for('web.index') }}">{{_('Books')}}</a></li>
-    <li aria-current="page">{{ entry.title }}</li>
+    <li><a href="{{url_for('web.index')}}">{{_('Home')}}</a></li>
+    {% if aubooks_genre_groups %}
+      {% set primary_genre = aubooks_genre_groups[0].genres[0] %}
+      <li><a href="{{url_for('web.category_list')}}">Жанры</a></li>
+      <li>{{aubooks_genre_groups[0].category}}</li>
+      <li><a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=primary_genre.tag_id)}}">{{primary_genre.label}}</a></li>
+    {% endif %}
+    <li class="active" aria-current="page">{{entry.title}}</li>
   </ol>
 </nav>
 {% endif %}

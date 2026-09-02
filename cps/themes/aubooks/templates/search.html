@@ -1,6 +1,14 @@
 {% from theme('_book_card.html') import book_card with context %}
 {% extends theme('layout.html') %}
 {% block body %}
+{% if query or adv_searchterm %}
+<nav aria-label="{{_('Breadcrumb')}}">
+  <ol class="breadcrumb">
+    <li><a href="{{url_for('web.index')}}">{{_('Home')}}</a></li>
+    <li class="active" aria-current="page">{{_('Search')}}</li>
+  </ol>
+</nav>
+{% endif %}
 <section class="discover aubooks-search-results" aria-label="{{_('Search results')}}">
   {% if not query and not adv_searchterm %}
     <h1>{{_('Search')}}</h1>

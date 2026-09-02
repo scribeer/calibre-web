@@ -63,10 +63,10 @@
 
 [data-theme="dark"] {
   /* Page & surfaces */
-  --aubooks-bg: #121212;
-  --aubooks-surface: #1e1e1e;
-  --aubooks-surface-raised: #252525;
-  --aubooks-surface-hover: #2a2a2a;
+  --aubooks-bg: #000000;
+  --aubooks-surface: #000000;
+  --aubooks-surface-raised: #000000;
+  --aubooks-surface-hover: #161616;
 
   /* Text */
   --aubooks-text: #e0e0e0;
@@ -91,7 +91,7 @@
   --aubooks-on-accent: #ffffff;
 
   /* Controls */
-  --aubooks-control-bg: #2a2a2a;
+  --aubooks-control-bg: #000000;
   --aubooks-placeholder: #777777;
 
   /* Semantic */
@@ -109,7 +109,7 @@
   --aubooks-info-text: #8ac4d8;
 
   /* Drag state */
-  --aubooks-drag-bg: #2a2a2a;
+  --aubooks-drag-bg: #161616;
 
   color-scheme: dark;
 }
@@ -117,10 +117,10 @@
 /* No-JS system dark: applies when data-theme attribute is absent */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --aubooks-bg: #121212;
-    --aubooks-surface: #1e1e1e;
-    --aubooks-surface-raised: #252525;
-    --aubooks-surface-hover: #2a2a2a;
+    --aubooks-bg: #000000;
+    --aubooks-surface: #000000;
+    --aubooks-surface-raised: #000000;
+    --aubooks-surface-hover: #161616;
     --aubooks-text: #e0e0e0;
     --aubooks-text-muted: #a0a0a0;
     --aubooks-text-subtle: #808080;
@@ -133,7 +133,7 @@
     --aubooks-focus-ring: #ffd600;
     --aubooks-accent: #5ba3d9;
     --aubooks-on-accent: #ffffff;
-    --aubooks-control-bg: #2a2a2a;
+    --aubooks-control-bg: #000000;
     --aubooks-placeholder: #777777;
     --aubooks-success: #6fbf73;
     --aubooks-success-surface: #1a2e1a;
@@ -147,7 +147,7 @@
     --aubooks-info: #5ba8c4;
     --aubooks-info-surface: #1a2a2e;
     --aubooks-info-text: #8ac4d8;
-    --aubooks-drag-bg: #2a2a2a;
+    --aubooks-drag-bg: #161616;
     color-scheme: dark;
   }
 }
@@ -240,10 +240,6 @@ a:hover {
   color: var(--aubooks-link-hover);
 }
 
-.navbar-brand {
-  color: var(--aubooks-link) !important;
-}
-
 /* ==========================================================================
    7. Navigation and sidebar
    ========================================================================== */
@@ -256,6 +252,10 @@ a:hover {
 
 .aubooks-logo {
   height: auto;
+}
+
+.aubooks-navbar-search .input-group {
+  width: 100%;
 }
 
 .navigation .create-shelf a {
@@ -410,6 +410,11 @@ a:hover {
   color: var(--aubooks-text);
   font-size: 24px;
   line-height: 1.25;
+}
+
+.aubooks-main .single #title {
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .aubooks-book-genres {
@@ -608,6 +613,12 @@ a:hover {
    ========================================================================== */
 
 @media (max-width: 767px) {
+  .aubooks-navbar-search {
+    clear: both;
+    width: 100%;
+    margin: 8px 0;
+  }
+
   .aubooks-catalog-book {
     padding: 1rem 0;
   }
@@ -625,6 +636,54 @@ a:hover {
   }
 }
 
+@media (min-width: 768px) {
+  .aubooks-header .navbar > .container-fluid {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .aubooks-header .navbar-header {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .aubooks-navbar-search {
+    flex: 1 1 24rem;
+    float: none !important;
+    min-width: 16rem;
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  .aubooks-header .navbar-collapse {
+    display: flex !important;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    width: auto !important;
+    padding-right: 0;
+    border-top: 0;
+    box-shadow: none;
+  }
+
+  .aubooks-header .navbar-collapse > .navbar-nav {
+    display: flex;
+    flex-wrap: wrap;
+    float: none !important;
+    margin: 0;
+  }
+
+  .aubooks-header #main-nav {
+    margin-left: auto;
+  }
+
+  .aubooks-main .single #title {
+    width: 133.333333%;
+    margin-left: -33.333333%;
+  }
+}
+
 /* ==========================================================================
    23. Drag-and-drop overlay state
    ========================================================================== */
@@ -639,6 +698,19 @@ a:hover {
 
 [data-theme="dark"] body {
   color: var(--aubooks-text);
+}
+
+html[data-theme="dark"],
+[data-theme="dark"] body,
+[data-theme="dark"] .aubooks-header,
+[data-theme="dark"] body > .container-fluid,
+[data-theme="dark"] .aubooks-main,
+[data-theme="dark"] .aubooks-sidebar,
+[data-theme="dark"] .aubooks-footer,
+[data-theme="dark"] .aubooks-catalog,
+[data-theme="dark"] .aubooks-search-results,
+[data-theme="dark"] .single {
+  background-color: #000000;
 }
 
 /* --- Navbar --- */

@@ -1,6 +1,12 @@
 {% extends theme('layout.html') %}
 {% block body %}
 {% if data == 'category' and aubooks_genre_tree is not none %}
+<nav aria-label="{{_('Breadcrumb')}}">
+  <ol class="breadcrumb">
+    <li><a href="{{url_for('web.index')}}">{{_('Home')}}</a></li>
+    <li class="active" aria-current="page">Жанры</li>
+  </ol>
+</nav>
 <h1 class="{{page}}">Жанры</h1>
 <div class="aubooks-genre-directory">
   {% for group in aubooks_genre_tree %}

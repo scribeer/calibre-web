@@ -1,6 +1,13 @@
 {% from theme('_book_card.html') import book_card with context %}
 {% extends theme('layout.html') %}
 {% block body %}
+<nav aria-label="{{_('Breadcrumb')}}">
+  <ol class="breadcrumb">
+    <li><a href="{{url_for('web.index')}}">{{_('Home')}}</a></li>
+    <li><a href="{{url_for('web.author_list')}}">{{_('Authors')}}</a></li>
+    <li class="active" aria-current="page">{{title}}</li>
+  </ol>
+</nav>
 <h1>{{title}}</h1>
 {% if author is not none %}
 <section class="author-bio" aria-label="{{title}}">
