@@ -27,13 +27,8 @@
     <span>({{book.series_index|formatfloat(2)}})</span>
   </p>
   {% endif %}
-  {% if book.data|length > 0 or book.ratings|length > 0 or (show_read_status and entry[2] == true) %}
+  {% if book.ratings|length > 0 or (show_read_status and entry[2] == true) %}
   <div class="aubooks-book-metadata">
-    {% if book.data|length > 0 %}
-    <p class="formats"><span class="aubooks-meta-label">{{_('File formats')}}:</span>
-      {% for format in book.data %}{{format.format}}{% if not loop.last %}, {% endif %}{% endfor %}
-    </p>
-    {% endif %}
     {% if book.ratings|length > 0 %}
     <p class="rating"><span class="aubooks-meta-label">{{_('Rating')}}:</span> {{(book.ratings[0].rating / 2)|formatfloat(1)}} / 5</p>
     {% endif %}

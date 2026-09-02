@@ -10,12 +10,12 @@
 {% block body %}
 <div class="single">
     <div class="row">
-        <div class="col-sm-3 col-lg-3 col-xs-5">
+        <div class="col-sm-3 col-lg-3 col-xs-5 aubooks-detail-cover-column">
             <div class="cover">
                 <button type="button" id="detailcover" class="aubooks-cover-button" aria-label="{{_('Cover')}}: {{entry.title}}">
                     <img alt="" decoding="async" loading="lazy"
                          data-src="{{ url_for('web.get_cover', book_id=entry.id, resolution='og', c=entry|last_modified) }}"
-                         onerror="this.parentElement.parentElement.style.display='none'"/>
+                         onerror="this.parentElement.parentElement.style.display='none';this.closest('.aubooks-detail-cover-column').classList.add('cover-unavailable')"/>
                 </button>
             </div>
         </div>

@@ -2,14 +2,6 @@
 {% extends theme('layout.html') %}
 {% block body %}
 <h1 id="catalog-heading">{{title}}</h1>
-{% if current_user.show_detail_random() and page != 'discover' %}
-<section class="discover random-books" aria-labelledby="random-books-heading">
-  <h2 id="random-books-heading">{{_('Discover (Random Books)')}}</h2>
-  <div class="aubooks-book-list">
-    {% for entry in random %}{{ book_card(entry, heading_level=3, page=page, show_annotation=show_annotations|default(false)) }}{% endfor %}
-  </div>
-</section>
-{% endif %}
 <section class="discover aubooks-catalog" aria-labelledby="catalog-heading">
   {% if page != 'discover' %}
   <nav class="filterheader aubooks-sort-controls" aria-label="{{_('Sort according to book date, newest first')}}">

@@ -36,6 +36,9 @@
   <body class="{{ page }} {{ bodyClass }}">
     <a class="skip-link" href="#main-content" lang="ru">Перейти к основному содержимому</a>
     <header class="aubooks-header">
+      <a class="aubooks-logo-link" href="{{url_for('web.index')}}">
+        <img class="aubooks-logo" src="{{url_for('static', filename='img/logo_au-books-1500.png')}}" width="1685" height="193" alt="AU-Books">
+      </a>
       <!-- Static navbar -->
       <nav class="navbar navbar-default navbar-static-top" aria-label="{{_('Main navigation')}}">
         <div class="container-fluid">

@@ -248,6 +248,16 @@ a:hover {
    7. Navigation and sidebar
    ========================================================================== */
 
+.aubooks-logo-link,
+.aubooks-logo {
+  display: block;
+  width: 100%;
+}
+
+.aubooks-logo {
+  height: auto;
+}
+
 .navigation .create-shelf a {
   background-color: var(--aubooks-link);
   color: var(--aubooks-on-accent);
@@ -382,6 +392,24 @@ a:hover {
 .aubooks-cover-button img[data-failed="true"],
 .aubooks-cover-button img:not([src]) {
   display: none;
+}
+
+.aubooks-main .single .aubooks-detail-cover-column {
+  padding-top: 20px;
+}
+
+.aubooks-main .single .aubooks-detail-cover-column.cover-unavailable {
+  display: none;
+}
+
+.aubooks-main .single .aubooks-detail-cover-column.cover-unavailable + .book-meta {
+  width: 100%;
+}
+
+.aubooks-main .single #description {
+  color: var(--aubooks-text);
+  font-size: 24px;
+  line-height: 1.25;
 }
 
 /* ==========================================================================
