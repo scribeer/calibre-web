@@ -46,21 +46,6 @@
       </div>
     </div>
     {% endif %}
-    <nav class="filterheader aubooks-sort-controls" aria-label="{{_('Search results sorting')}}">
-      {% set sorts = [
-        ('new', _('Sort according to book date, newest first'), 'glyphicon-sort-by-order'),
-        ('old', _('Sort according to book date, oldest first'), 'glyphicon-sort-by-order-alt'),
-        ('abc', _('Sort title in alphabetical order'), 'glyphicon-sort-by-alphabet'),
-        ('zyx', _('Sort title in reverse alphabetical order'), 'glyphicon-sort-by-alphabet-alt'),
-        ('authaz', _('Sort authors in alphabetical order'), 'glyphicon-user'),
-        ('authza', _('Sort authors in reverse alphabetical order'), 'glyphicon-user'),
-        ('pubnew', _('Sort according to publishing date, newest first'), 'glyphicon-calendar'),
-        ('pubold', _('Sort according to publishing date, oldest first'), 'glyphicon-calendar')
-      ] %}
-      {% for sort_key, sort_label, sort_icon in sorts %}
-      <a id="sort_{{sort_key}}" aria-label="{{sort_label}}" class="btn btn-primary{% if order == sort_key %} active{% endif %}" {% if order == sort_key %}aria-current="true"{% endif %} href="{{url_for('web.books_list', data=page, sort_param=sort_key, query=query)}}"><span class="glyphicon {{sort_icon}}" aria-hidden="true"></span><span class="sr-only">{{sort_label}}</span></a>
-      {% endfor %}
-    </nav>
   {% endif %}
   {% if entries|length > 0 %}
   <div class="aubooks-book-list">

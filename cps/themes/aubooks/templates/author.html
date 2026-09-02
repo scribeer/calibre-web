@@ -19,19 +19,6 @@
 {% endif %}
 <section class="discover aubooks-author-books" aria-labelledby="author-books-heading">
   <h2 id="author-books-heading">{{_('In Library')}}</h2>
-  <nav class="filterheader aubooks-sort-controls" aria-label="{{_('In Library')}}">
-    {% set sorts = [
-      ('new', _('Sort according to book date, newest first'), 'glyphicon-sort-by-order'),
-      ('old', _('Sort according to book date, oldest first'), 'glyphicon-sort-by-order-alt'),
-      ('abc', _('Sort title in alphabetical order'), 'glyphicon-sort-by-alphabet'),
-      ('zyx', _('Sort title in reverse alphabetical order'), 'glyphicon-sort-by-alphabet-alt'),
-      ('pubnew', _('Sort according to publishing date, newest first'), 'glyphicon-calendar'),
-      ('pubold', _('Sort according to publishing date, oldest first'), 'glyphicon-calendar')
-    ] %}
-    {% for sort_key, sort_label, sort_icon in sorts %}
-    <a id="sort_{{sort_key}}" aria-label="{{sort_label}}" class="btn btn-primary{% if order == sort_key %} active{% endif %}" {% if order == sort_key %}aria-current="true"{% endif %} href="{{url_for('web.books_list', data='author', book_id=id, sort_param=sort_key)}}"><span class="glyphicon {{sort_icon}}" aria-hidden="true"></span><span class="sr-only">{{sort_label}}</span></a>
-    {% endfor %}
-  </nav>
   <div class="aubooks-book-list">
     {% for entry in entries %}{{ book_card(entry, heading_level=3, page='author', link_authors=false, show_annotation=true) }}{% endfor %}
   </div>

@@ -17,8 +17,8 @@
   --aubooks-text-subtle: #777777;
 
   /* Links */
-  --aubooks-link: #176b60;
-  --aubooks-link-hover: #145c52;
+  --aubooks-link: #1976d2;
+  --aubooks-link-hover: #1565c0;
   --aubooks-link-muted: #595959;
 
   /* Borders */
@@ -74,8 +74,8 @@
   --aubooks-text-subtle: #808080;
 
   /* Links */
-  --aubooks-link: #4db8a4;
-  --aubooks-link-hover: #6dcdb8;
+  --aubooks-link: #64b5f6;
+  --aubooks-link-hover: #90caf9;
   --aubooks-link-muted: #a0a0a0;
 
   /* Borders */
@@ -124,8 +124,8 @@
     --aubooks-text: #e0e0e0;
     --aubooks-text-muted: #a0a0a0;
     --aubooks-text-subtle: #808080;
-    --aubooks-link: #4db8a4;
-    --aubooks-link-hover: #6dcdb8;
+    --aubooks-link: #64b5f6;
+    --aubooks-link-hover: #90caf9;
     --aubooks-link-muted: #a0a0a0;
     --aubooks-border: #333333;
     --aubooks-border-strong: #444444;
