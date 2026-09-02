@@ -104,6 +104,51 @@ class AubooksGenresTest(unittest.TestCase):
         self.assertEqual([genre["tag_id"] for genre in fantasy["genres"]], [12, 11])
         self.assertFalse(any(genre["tag_id"] == 13 for group in tree for genre in group["genres"]))
 
+    def test_sidebar_tree_deduplicates_same_label_from_code_and_russian_tag(self):
+        tree = build_sidebar_genre_tree([
+            tag(100, "det_action"),
+            tag(200, "Боевик"),
+            tag(101, "det_irony"),
+            tag(201, "Иронический детектив"),
+        ])
+        det = next(group for group in tree if group["category"] == "Детективы и триллеры")
+        self.assertEqual(len(det["genres"]), 2)
+        labels = [g["label"] for g in det["genres"]]
+        self.assertEqual(len(labels), len(set(labels)), "Duplicate labels in sidebar tree")
+        boevik = next(g for g in det["genres"] if g["label"] == "Боевик")
+        self.assertEqual(sorted(boevik["tag_ids"]), [100, 200])
+        self.assertIn(100, boevik["tag_ids"])
+        self.assertIn(200, boevik["tag_ids"])
+
+    def test_sidebar_tree_no_duplicate_labels_across_all_categories(self):
+        all_labels = []
+        for group in build_sidebar_genre_tree([
+            tag(1, "det_action"),
+            tag(2, "Боевик"),
+            tag(3, "det_irony"),
+            tag(4, "Иронический детектив"),
+            tag(5, "sf_space"),
+            tag(6, "Космическая фантастика"),
+            tag(7, "love"),
+            tag(8, "Любовные романы"),
+        ]):
+            for genre in group["genres"]:
+                all_labels.append(genre["label"])
+        self.assertEqual(len(all_labels), len(set(all_labels)),
+                         "Duplicate labels found: {}".format(
+                             [l for l in all_labels if all_labels.count(l) > 1]))
+
+    def test_sidebar_tree_preserves_tag_id_for_url_generation(self):
+        tree = build_sidebar_genre_tree([
+            tag(100, "det_action"),
+            tag(200, "Боевик"),
+        ])
+        det = next(group for group in tree if group["category"] == "Детективы и триллеры")
+        boevik = next(g for g in det["genres"] if g["label"] == "Боевик")
+        self.assertEqual(boevik["tag_id"], 100)
+        self.assertIsInstance(boevik["tag_ids"], list)
+        self.assertEqual(len(boevik["tag_ids"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

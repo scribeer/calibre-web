@@ -689,30 +689,35 @@ def render_category_books(page, book_id, order):
                                                                 db.Tags,
                                                                 db.books_series_link,
                                                                 db.Books.id == db.books_series_link.c.book,
-                                                                db.Series)
+                                                                db.Series,
+                                                                load_comments=True)
         tagsname = _("None")
     else:
-        selected_tag = calibre_db.session.query(db.Tags).filter(db.Tags.id == book_id).first()
-        if selected_tag:
-            entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                    db.Books,
-                                                                    db.Books.tags.any(db.Tags.id == book_id),
-                                                                    [order[0][0], db.Series.name,
-                                                                     db.Books.series_index],
-                                                                    True, config.config_read_column,
-                                                                    db.books_series_link,
-                                                                    db.Books.id == db.books_series_link.c.book,
-                                                                    db.Series)
-            tagsname = selected_tag.name
-            if get_active_theme_identifier() == "aubooks":
-                from .aubooks_genres import genre_for_tag
-                aubooks_genre = genre_for_tag(selected_tag)
-                tagsname = aubooks_genre["label"]
-        else:
+        tag_ids = [int(tid) for tid in str(book_id).split('+') if tid.strip().isdigit()]
+        if not tag_ids:
             abort(404)
+        db_filter = or_(*[db.Tags.id == tid for tid in tag_ids])
+        selected_tags = calibre_db.session.query(db.Tags).filter(db.Tags.id.in_(tag_ids)).all()
+        if not selected_tags:
+            abort(404)
+        entries, random, pagination = calibre_db.fill_indexpage(page, 0,
+                                                                db.Books,
+                                                                db.Books.tags.any(db_filter),
+                                                                [order[0][0], db.Series.name,
+                                                                 db.Books.series_index],
+                                                                True, config.config_read_column,
+                                                                db.books_series_link,
+                                                                db.Books.id == db.books_series_link.c.book,
+                                                                db.Series,
+                                                                load_comments=True)
+        tagsname = selected_tags[0].name
+        if get_active_theme_identifier() == "aubooks":
+            from .aubooks_genres import genre_for_tag
+            aubooks_genre = genre_for_tag(selected_tags[0])
+            tagsname = aubooks_genre["label"]
     return render_title_template('index.html', random=random, entries=entries, pagination=pagination, id=book_id,
                                  title=_("Category: %(name)s", name=tagsname), page="category", order=order[1],
-                                 aubooks_genre=aubooks_genre)
+                                 aubooks_genre=aubooks_genre, show_annotations=True)
 
 
 def render_language_books(page, name, order):

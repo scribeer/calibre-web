@@ -156,7 +156,9 @@ def render_title_template(*args, **kwargs):
         kwargs.setdefault("aubooks_sidebar_open_categories",
                           [group["category"] for group in genre_groups])
         kwargs.setdefault("aubooks_sidebar_related_genre_ids",
-                          [genre["tag_id"] for group in genre_groups for genre in group["genres"]])
+                          [tid for group in genre_groups
+                           for genre in group["genres"]
+                           for tid in genre.get("tag_ids", [genre["tag_id"]])])
     try:
         return themed_render(args[0],
                              instance=config.config_calibre_web_title,

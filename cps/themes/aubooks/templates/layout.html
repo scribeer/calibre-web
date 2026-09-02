@@ -152,7 +152,7 @@
                       {% for group in aubooks_sidebar_genre_tree %}
                         {% set category_state = namespace(open=group.category in aubooks_sidebar_open_categories) %}
                         {% for genre in group.genres %}
-                          {% if genre.tag_id == aubooks_sidebar_active_genre_id %}{% set category_state.open = true %}{% endif %}
+                          {% if aubooks_sidebar_active_genre_id in genre.tag_ids %}{% set category_state.open = true %}{% endif %}
                         {% endfor %}
                       <li>
                         <details{% if category_state.open %} class="active-context" open{% endif %}>
@@ -160,7 +160,11 @@
                           {% if group.genres %}
                           <ul>
                             {% for genre in group.genres %}
-                            <li><a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=genre.tag_id)}}"{% if genre.tag_id == aubooks_sidebar_active_genre_id %} class="active" aria-current="page"{% elif genre.tag_id in aubooks_sidebar_related_genre_ids %} class="related"{% endif %}>{{genre.label}}</a></li>
+                            {% set ns = namespace(related=false) %}
+                            {% for tid in genre.tag_ids %}
+                              {% if tid in aubooks_sidebar_related_genre_ids %}{% set ns.related = true %}{% endif %}
+                            {% endfor %}
+                            <li><a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=genre.tag_ids|join('+'))}}"{% if aubooks_sidebar_active_genre_id in genre.tag_ids %} class="active" aria-current="page"{% elif ns.related %} class="related"{% endif %}>{{genre.label}}</a></li>
                             {% endfor %}
                           </ul>
                           {% endif %}

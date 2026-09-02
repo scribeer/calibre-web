@@ -162,14 +162,29 @@ def build_genre_tree(entries):
 
 
 def build_sidebar_genre_tree(tags):
-    """Build all mapped categories from real tags without counts or unknowns."""
+    """Build all mapped categories from real tags without counts or unknowns.
+
+    Deduplicates by display label (genre code) so that Flibusta code tags
+    (e.g. ``det_action``) and their Russian label equivalents (e.g.
+    ``Боевик``) produce a single sidebar entry.  All tag IDs that resolve
+    to the same label are merged into a ``tag_ids`` list so that the
+    resulting compound URL shows books from *every* matching tag.
+    """
     grouped = OrderedDict((category, []) for category in CATEGORIES)
-    seen = set()
+    seen_codes = set()
     for tag in tags:
         genre = genre_for_tag(tag)
-        if not genre["mapped"] or genre["tag_id"] in seen:
+        if not genre["mapped"]:
             continue
-        seen.add(genre["tag_id"])
+        code = genre["code"]
+        if code in seen_codes:
+            for existing_genre in grouped[genre["category"]]:
+                if existing_genre["code"] == code:
+                    existing_genre["tag_ids"].append(genre["tag_id"])
+                    break
+            continue
+        seen_codes.add(code)
+        genre["tag_ids"] = [genre["tag_id"]]
         grouped[genre["category"]].append(genre)
 
     tree = []
