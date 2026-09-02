@@ -156,7 +156,7 @@
                         {% endfor %}
                       <li>
                         <details{% if category_state.open %} class="active-context" open{% endif %}>
-                          <summary>{{group.category}}</summary>
+                          <summary><a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=group.category_tag_ids|join('+'))}}">{{group.category}}</a></summary>
                           {% if group.genres %}
                           <ul>
                             {% for genre in group.genres %}

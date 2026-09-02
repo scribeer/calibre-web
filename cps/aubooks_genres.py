@@ -122,7 +122,12 @@ def genre_for_tag(tag):
 
 
 def group_tags(tags):
-    """Group one book's tags by category without duplicating category labels."""
+    """Group one book's tags by category without duplicating category labels.
+
+    Each group gets a ``category_tag_ids`` list containing every tag ID that
+    belongs to the category (deduplicated by genre code so that Flibusta
+    code tags and their Russian label equivalents are merged).
+    """
     grouped = OrderedDict()
     seen = set()
     for tag in tags:
@@ -138,7 +143,15 @@ def group_tags(tags):
     result = []
     for category, genres in grouped.items():
         genres.sort(key=lambda item: item["label"].casefold())
-        result.append({"category": category, "genres": genres})
+        seen_codes = set()
+        category_tag_ids = []
+        for genre in genres:
+            code = genre["code"]
+            if code not in seen_codes:
+                seen_codes.add(code)
+                category_tag_ids.append(genre["tag_id"])
+        result.append({"category": category, "genres": genres,
+                        "category_tag_ids": category_tag_ids})
     result.sort(key=lambda item: category_order.get(item["category"], len(category_order)))
     return result
 
@@ -190,5 +203,13 @@ def build_sidebar_genre_tree(tags):
     tree = []
     for category, genres in grouped.items():
         genres.sort(key=lambda item: item["label"].casefold())
-        tree.append({"category": category, "genres": genres})
+        category_tag_ids = []
+        seen_codes = set()
+        for genre in genres:
+            code = genre["code"]
+            if code not in seen_codes:
+                seen_codes.add(code)
+                category_tag_ids.extend(genre["tag_ids"])
+        tree.append({"category": category, "genres": genres,
+                      "category_tag_ids": category_tag_ids})
     return tree

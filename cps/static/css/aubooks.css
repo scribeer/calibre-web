@@ -289,6 +289,17 @@ a:hover {
   cursor: pointer;
 }
 
+.aubooks-sidebar-genres summary a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.aubooks-sidebar-genres summary a:hover,
+.aubooks-sidebar-genres summary a:focus {
+  color: var(--aubooks-link);
+  text-decoration: underline;
+}
+
 .aubooks-sidebar-genres summary:hover,
 .aubooks-sidebar-genres summary:focus {
   background-color: var(--aubooks-surface-hover);
@@ -461,8 +472,18 @@ a:hover {
 }
 
 .aubooks-main .single #title {
-  text-align: center;
   overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.aubooks-main .single .row {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 0 1.5rem;
+}
+
+.aubooks-main .single .book-meta {
+  min-width: 0;
 }
 
 .aubooks-book-genres {
@@ -694,6 +715,15 @@ a:hover {
   .aubooks-theme-control {
     padding: 8px 15px;
   }
+
+  .aubooks-main .single .row {
+    grid-template-columns: 1fr;
+  }
+
+  .aubooks-main .single .aubooks-detail-cover-column {
+    max-width: 300px;
+    margin: 0 auto;
+  }
 }
 
 @media (min-width: 768px) {
@@ -736,11 +766,6 @@ a:hover {
 
   .aubooks-header #main-nav {
     margin-left: auto;
-  }
-
-  .aubooks-main .single #title {
-    width: 133.333333%;
-    margin-left: -33.333333%;
   }
 }
 
