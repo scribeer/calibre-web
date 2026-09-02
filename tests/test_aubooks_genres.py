@@ -149,6 +149,24 @@ class AubooksGenresTest(unittest.TestCase):
         self.assertIsInstance(boevik["tag_ids"], list)
         self.assertEqual(len(boevik["tag_ids"]), 2)
 
+    def test_group_tags_produces_category_tag_ids(self):
+        groups = group_tags([
+            tag(10, "sf_action"),
+            tag(20, "sf_space"),
+            tag(30, "det_classic"),
+        ])
+        fantasy = next(g for g in groups if g["category"] == "Фантастика")
+        self.assertIn("category_tag_ids", fantasy)
+        self.assertEqual(sorted(fantasy["category_tag_ids"]), [10, 20])
+
+    def test_group_tags_merges_duplicate_codes_into_category_tag_ids(self):
+        groups = group_tags([
+            tag(100, "det_action"),
+            tag(200, "Боевик"),
+        ])
+        det = next(g for g in groups if g["category"] == "Детективы и триллеры")
+        self.assertEqual(sorted(det["category_tag_ids"]), [100, 200])
+
 
 if __name__ == "__main__":
     unittest.main()

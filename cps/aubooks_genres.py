@@ -143,13 +143,7 @@ def group_tags(tags):
     result = []
     for category, genres in grouped.items():
         genres.sort(key=lambda item: item["label"].casefold())
-        seen_codes = set()
-        category_tag_ids = []
-        for genre in genres:
-            code = genre["code"]
-            if code not in seen_codes:
-                seen_codes.add(code)
-                category_tag_ids.append(genre["tag_id"])
+        category_tag_ids = [genre["tag_id"] for genre in genres]
         result.append({"category": category, "genres": genres,
                         "category_tag_ids": category_tag_ids})
     result.sort(key=lambda item: category_order.get(item["category"], len(category_order)))

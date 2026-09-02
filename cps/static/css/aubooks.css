@@ -448,8 +448,7 @@ a:hover {
   background: transparent;
 }
 
-.aubooks-cover-button img[data-failed="true"],
-.aubooks-cover-button img:not([src]) {
+.aubooks-cover-button img[data-failed="true"] {
   display: none;
 }
 
