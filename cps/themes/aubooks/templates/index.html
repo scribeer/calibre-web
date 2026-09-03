@@ -6,7 +6,11 @@
   <ol class="breadcrumb">
     <li><a href="{{url_for('web.index')}}">{{_('Home')}}</a></li>
     <li><a href="{{url_for('web.category_list')}}">Жанры</a></li>
+    {% if aubooks_genre.category != aubooks_genre.label %}
+    <li><a href="{{url_for('web.category_by_slug', slug=aubooks_genre.category_slug)}}">{{aubooks_genre.category}}</a></li>
+    {% else %}
     <li>{{aubooks_genre.category}}</li>
+    {% endif %}
     <li class="active" aria-current="page">{{aubooks_genre.label}}</li>
   </ol>
 </nav>

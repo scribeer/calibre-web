@@ -163,7 +163,7 @@
               <ul class="aubooks-genre-groups">
                 {% for group in aubooks_genre_groups %}
                 <li>
-                  <a class="aubooks-genre-category" href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=group.category_tag_ids|join('+'))}}">{{group.category}}</a>
+                  <a class="aubooks-genre-category" href="{{url_for('web.category_by_slug', slug=group.category_slug)}}">{{group.category}}</a>
                   <ul>
                     {% for genre in group.genres %}
                     <li><a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=genre.tag_id)}}">{{genre.label}}</a></li>

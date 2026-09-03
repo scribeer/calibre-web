@@ -97,6 +97,50 @@ for _label in _DUPLICATE_LABELS:
 MAPPED_TAG_NAMES = tuple(GENRES) + tuple(_LABEL_GENRES)
 
 
+# ---------------------------------------------------------------------------
+# Category slug helpers for /category/<slug> parent pages
+# ---------------------------------------------------------------------------
+
+_SLUG_MAP = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+}
+
+
+def _slugify(label):
+    """Transliterate a Russian category label to a stable ASCII slug."""
+    parts = []
+    for ch in label.lower():
+        if ch.isalnum():
+            parts.append(_SLUG_MAP.get(ch, ch))
+        elif parts and parts[-1] != '-':
+            parts.append('-')
+    return ''.join(parts).strip('-')
+
+
+CATEGORY_SLUGS = {_slugify(cat): cat for cat in CATEGORIES}
+
+
+def category_by_slug(slug):
+    """Return category label for a slug, or None."""
+    return CATEGORY_SLUGS.get(slug)
+
+
+def build_category_slug_map(sidebar_tree):
+    """Build slug→{label, tag_ids} mapping from the sidebar genre tree."""
+    slug_map = {}
+    for group in sidebar_tree:
+        slug = _slugify(group["category"])
+        slug_map[slug] = {
+            "label": group["category"],
+            "tag_ids": list(group.get("category_tag_ids", [])),
+        }
+    return slug_map
+
+
 def _public_unknown_label(name):
     name = (name or "").strip()
     if any(character.isalpha() and ord(character) > 127 for character in name):
@@ -145,7 +189,8 @@ def group_tags(tags):
         genres.sort(key=lambda item: item["label"].casefold())
         category_tag_ids = [genre["tag_id"] for genre in genres]
         result.append({"category": category, "genres": genres,
-                        "category_tag_ids": category_tag_ids})
+                        "category_tag_ids": category_tag_ids,
+                        "category_slug": _slugify(category)})
     result.sort(key=lambda item: category_order.get(item["category"], len(category_order)))
     return result
 
@@ -205,5 +250,6 @@ def build_sidebar_genre_tree(tags):
                 seen_codes.add(code)
                 category_tag_ids.extend(genre["tag_ids"])
         tree.append({"category": category, "genres": genres,
-                      "category_tag_ids": category_tag_ids})
+                      "category_tag_ids": category_tag_ids,
+                      "category_slug": _slugify(category)})
     return tree

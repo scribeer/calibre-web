@@ -2,11 +2,14 @@ import unittest
 from types import SimpleNamespace
 
 from cps.aubooks_genres import (
+    CATEGORY_SLUGS,
     CATEGORIES,
     GENRES,
     UNKNOWN_CATEGORY,
+    build_category_slug_map,
     build_genre_tree,
     build_sidebar_genre_tree,
+    category_by_slug,
     genre_for_tag,
     group_tags,
 )
@@ -196,6 +199,73 @@ class AubooksDetailTemplateTest(unittest.TestCase):
         self.assertIn(".aubooks-detail-layout", css)
         self.assertIn("grid-template-columns", css)
         self.assertIn(".aubooks-detail-content", css)
+
+
+class AubooksCategorySlugTest(unittest.TestCase):
+
+    def test_all_21_slugs_are_unique(self):
+        self.assertEqual(len(CATEGORY_SLUGS), 21)
+        self.assertEqual(len(set(CATEGORY_SLUGS)), 21)
+
+    def test_category_by_slug_returns_label(self):
+        self.assertEqual(category_by_slug("fantastika"), "Фантастика")
+        self.assertEqual(category_by_slug("detektivy-i-trillery"), "Детективы и триллеры")
+        self.assertEqual(category_by_slug("spravochnaya-literatura"), "Справочная литература")
+
+    def test_unknown_slug_returns_none(self):
+        self.assertIsNone(category_by_slug("unknown-slug"))
+        self.assertIsNone(category_by_slug(""))
+        self.assertIsNone(category_by_slug("fantastika-extra"))
+
+    def test_sidebar_tree_has_category_slug(self):
+        tree = build_sidebar_genre_tree([
+            tag(11, "sf_space"),
+            tag(12, "sf_action"),
+        ])
+        fantasy = next(group for group in tree if group["category"] == "Фантастика")
+        self.assertEqual(fantasy["category_slug"], "fantastika")
+        self.assertIn("category_slug", fantasy)
+
+    def test_all_sidebar_groups_have_slug(self):
+        tree = build_sidebar_genre_tree([tag(i, c) for i, c in enumerate(GENRES)])
+        for group in tree:
+            self.assertIn("category_slug", group)
+            self.assertTrue(category_by_slug(group["category_slug"]),
+                            f"Slug {group['category_slug']!r} not resolvable")
+
+    def test_group_tags_includes_category_slug(self):
+        groups = group_tags([tag(10, "sf_action"), tag(20, "det_classic")])
+        for group in groups:
+            self.assertIn("category_slug", group)
+            self.assertTrue(category_by_slug(group["category_slug"]))
+
+    def test_sidebar_tree_category_tag_ids_nonempty(self):
+        tree = build_sidebar_genre_tree([tag(i, c) for i, c in enumerate(GENRES)])
+        for group in tree:
+            self.assertIsInstance(group["category_tag_ids"], list)
+            self.assertGreater(len(group["category_tag_ids"]), 0,
+                               f"Empty tag_ids for {group['category']}")
+
+
+class AubooksParentCategoryTemplateTest(unittest.TestCase):
+
+    def test_sidebar_uses_category_by_slug_for_parent(self):
+        from pathlib import Path
+        tpl = Path("cps/themes/aubooks/templates/layout.html").read_text()
+        self.assertIn("web.category_by_slug", tpl)
+        self.assertIn("group.category_slug", tpl)
+
+    def test_detail_uses_category_by_slug_for_parent(self):
+        from pathlib import Path
+        tpl = Path("cps/themes/aubooks/templates/detail.html").read_text()
+        self.assertIn("web.category_by_slug", tpl)
+        self.assertIn("group.category_slug", tpl)
+
+    def test_index_breadcrumb_uses_category_by_slug(self):
+        from pathlib import Path
+        tpl = Path("cps/themes/aubooks/templates/index.html").read_text()
+        self.assertIn("web.category_by_slug", tpl)
+        self.assertIn("aubooks_genre.category_slug", tpl)
 
 
 if __name__ == "__main__":

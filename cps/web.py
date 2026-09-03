@@ -53,7 +53,7 @@ from .redirect import get_redirect_location
 from .cw_babel import get_available_locale
 from .usermanagement import login_required_if_no_ano
 from .kobo_sync_status import remove_synced_book
-from .render_template import get_active_theme_identifier, render_title_template
+from .render_template import get_active_theme_identifier, render_title_template, _get_aubooks_sidebar_genre_tree
 from .kobo_sync_status import change_archived_books
 from .services.worker import WorkerThread
 from .tasks_status import render_task_status
@@ -712,8 +712,9 @@ def render_category_books(page, book_id, order):
                                                                 load_comments=True)
         tagsname = selected_tags[0].name
         if get_active_theme_identifier() == "aubooks":
-            from .aubooks_genres import genre_for_tag
+            from .aubooks_genres import genre_for_tag, _slugify
             aubooks_genre = genre_for_tag(selected_tags[0])
+            aubooks_genre["category_slug"] = _slugify(aubooks_genre["category"])
             tagsname = aubooks_genre["label"]
     return render_title_template('index.html', random=random, entries=entries, pagination=pagination, id=book_id,
                                  title=_("Category: %(name)s", name=tagsname), page="category", order=order[1],
@@ -831,6 +832,61 @@ def index(page):
 @login_required_if_no_ano
 def books_list(data, sort_param, book_id, page):
     return render_books_list(data, sort_param, book_id, page)
+
+
+@login_required_if_no_ano
+def category_by_slug(slug):
+    from .aubooks_genres import build_category_slug_map, CATEGORY_SLUGS
+
+    if get_active_theme_identifier() != "aubooks":
+        abort(404)
+
+    category_label = CATEGORY_SLUGS.get(slug)
+    if category_label is None:
+        abort(404)
+
+    sidebar_tree = _get_aubooks_sidebar_genre_tree()
+    slug_map = build_category_slug_map(sidebar_tree)
+    cat_info = slug_map.get(slug)
+    if not cat_info or not cat_info["tag_ids"]:
+        abort(404)
+
+    order = [db.Books.timestamp.desc()]
+    sort_param = (request.args.get('sort') or 'stored').lower()
+    if sort_param != 'stored':
+        order = get_sort_function(sort_param, 'category')[0]
+
+    tag_ids = cat_info["tag_ids"]
+    db_filter = or_(*[db.Tags.id == tid for tid in tag_ids])
+
+    entries, random, pagination = calibre_db.fill_indexpage(
+        request.args.get('page', 1, type=int), 0,
+        db.Books,
+        db.Books.tags.any(db_filter),
+        [order[0], db.Series.name, db.Books.series_index],
+        True, config.config_read_column,
+        db.books_series_link,
+        db.Books.id == db.books_series_link.c.book,
+        db.Series,
+        load_comments=True)
+
+    aubooks_genre = {"category": cat_info["label"], "tag_id": None,
+                     "label": cat_info["label"]}
+
+    category_title = "{} — {}".format(cat_info["label"], config.config_calibre_web_title)
+
+    return render_title_template(
+        'index.html',
+        random=random, entries=entries, pagination=pagination,
+        title=cat_info["label"],
+        seo_title=category_title,
+        page="category", order=sort_param,
+        aubooks_genre=aubooks_genre,
+        aubooks_category_slug=slug,
+        show_annotations=True)
+
+
+web.add_url_rule("/category/<slug>", view_func=category_by_slug)
 
 # Limit number of routes to avoid redirects
 data =["rated", "discover", "unread", "read", "hot", "download", "author", "publisher", "series", "ratings", "formats",
