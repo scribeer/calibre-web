@@ -102,11 +102,11 @@ class TestNormalize(unittest.TestCase):
 
     def test_case_insensitive_mapping(self):
         result = self.norm.normalize(["ДЕТЕКТИВ"])
-        self.assertEqual(result, ["детектив"])
+        self.assertEqual(result, ["Детектив"])
 
     def test_case_insensitive_dedup(self):
         result = self.norm.normalize(["детектив", "ДЕТЕКТИВ", "Детектив"])
-        self.assertEqual(result, ["детектив"])
+        self.assertEqual(result, ["Детектив"])
 
     def test_case_insensitive_dedup_with_mapping(self):
         result = self.norm.normalize(["det_action", "Det_Action"])
@@ -160,6 +160,51 @@ class TestNormalize(unittest.TestCase):
         if low_tag:
             result = self.norm.normalize([low_tag])
             self.assertEqual(result, [low_tag])
+
+    def test_canonical_spelling_preserved(self):
+        """Canonical spelling from mapping is always used."""
+        result = self.norm.normalize(["детектив"])
+        self.assertEqual(result, ["Детектив"])
+
+    def test_uppercase_to_canonical(self):
+        """Uppercase input maps to canonical spelling."""
+        result = self.norm.normalize(["ДЕТЕКТИВ"])
+        self.assertEqual(result, ["Детектив"])
+
+    def test_mixed_case_dedup(self):
+        """Mixed case duplicates collapse to one canonical."""
+        result = self.norm.normalize(["детектив", "ДЕТЕКТИВ", "Детектив"])
+        self.assertEqual(result, ["Детектив"])
+
+    def test_code_plus_russian_dedup(self):
+        """Code and Russian variants collapse to one canonical."""
+        result = self.norm.normalize(["det_action", "Боевик"])
+        self.assertEqual(result, ["Боевик"])
+
+    def test_unknown_case_not_changed(self):
+        """Unknown tags are not auto-cased."""
+        result = self.norm.normalize(["Foo", "foo", "FOO"])
+        self.assertEqual(result, ["Foo", "foo", "FOO"])
+
+    def test_unicode_casefold(self):
+        """Unicode casefold works for Cyrillic."""
+        result = self.norm.normalize(["ДЕТЕКТИВ"])
+        self.assertEqual(result, ["Детектив"])
+
+    def test_trim_known_genre(self):
+        """Whitespace around known genre is trimmed."""
+        result = self.norm.normalize(["  ДЕТЕКТИВ  "])
+        self.assertEqual(result, ["Детектив"])
+
+    def test_psyhology_typo_mapped(self):
+        """Typo in mapping is correctly mapped."""
+        result = self.norm.normalize(["Психлогия"])
+        self.assertEqual(result, ["Психология"])
+
+    def test_horror_mapped_to_uzhasy(self):
+        """Хоррор maps to Ужасы."""
+        result = self.norm.normalize(["Хоррор"])
+        self.assertEqual(result, ["Ужасы"])
 
 
 class TestNormalizeDry(unittest.TestCase):
