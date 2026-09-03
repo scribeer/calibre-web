@@ -262,23 +262,29 @@ class TestMappingStats(unittest.TestCase):
 
 
 class TestMultiTagCanonical(unittest.TestCase):
-    """Тест разделения comma-separated canonical values на отдельные теги."""
+    """Тест разделения explicit | separator на отдельные теги."""
 
     def setUp(self):
         self.norm = GenreNormalizer()
 
     def test_two_tag_split(self):
-        """network_literature → Самиздат, сетевая литература."""
+        """network_literature → Самиздат|сетевая литература."""
         result = self.norm.normalize(["network_literature"])
         self.assertEqual(result, ["Самиздат", "сетевая литература"])
 
     def test_three_tag_split(self):
-        """sci_popular → 3 tags."""
-        result = self.norm.normalize(["sci_popular"])
+        """geo_guides → Путеводители|карты|атласы."""
+        result = self.norm.normalize(["geo_guides"])
         self.assertEqual(len(result), 3)
-        self.assertIn("Образовательная", result)
-        self.assertIn("прикладная", result)
-        self.assertIn("научно-популярная литература", result)
+        self.assertIn("Путеводители", result)
+        self.assertIn("карты", result)
+        self.assertIn("атласы", result)
+
+    def test_comma_in_canonical_not_split(self):
+        """Comma inside canonical name is NOT split (now single tag)."""
+        # sci_popular was rewritten to "Научно-популярная литература" (single tag)
+        result = self.norm.normalize(["sci_popular"])
+        self.assertEqual(result, ["Научно-популярная литература"])
 
     def test_dedup_with_split_canonical(self):
         """Unknown tag matching canonical from split is deduped."""
@@ -295,24 +301,22 @@ class TestMultiTagCanonical(unittest.TestCase):
         result = self.norm.normalize(["foo", "Foo", "FOO"])
         self.assertEqual(result, ["foo", "Foo", "FOO"])
 
-    def test_split_canonical_preserves_order(self):
-        """Split canonical tags appear in mapping order."""
+    def test_single_canonical_not_split(self):
+        """love_sf now maps to single canonical (was rewritten)."""
         result = self.norm.normalize(["love_sf"])
-        self.assertEqual(result, ["Любовное фэнтези", "любовно-фантастические романы"])
+        self.assertEqual(result, ["Любовное фэнтези"])
 
     def test_split_across_multiple_raw_tags(self):
         """Two raw tags each producing split canonical values."""
-        result = self.norm.normalize(["network_literature", "love_sf"])
+        result = self.norm.normalize(["network_literature", "proverbs"])
         self.assertEqual(len(result), 4)
         self.assertEqual(result, [
             "Самиздат", "сетевая литература",
-            "Любовное фэнтези", "любовно-фантастические романы"
+            "Пословицы", "поговорки"
         ])
 
     def test_split_no_duplicates_across_tags(self):
         """No duplicates when split canonical values overlap with other raw tags."""
-        # network_literature produces "Самиздат"
-        # If "Самиздат" also appears as raw tag, it should be deduped
         result = self.norm.normalize(["network_literature", "Самиздат", "сетевая литература"])
         self.assertEqual(result, ["Самиздат", "сетевая литература"])
 
@@ -324,8 +328,8 @@ class TestMultiTagCanonical(unittest.TestCase):
         self.assertEqual(change["type"], "mapped")
         self.assertEqual(d["after"], ["Самиздат", "сетевая литература"])
 
-    def test_single_comma_canonical_still_works(self):
-        """Single canonical value (no comma) still works correctly."""
+    def test_single_canonical_still_works(self):
+        """Single canonical value (no separator) still works correctly."""
         result = self.norm.normalize(["det_action"])
         self.assertEqual(result, ["Боевик"])
 
@@ -335,6 +339,20 @@ class TestMultiTagCanonical(unittest.TestCase):
         for tag in result:
             self.assertEqual(tag, tag.strip())
             self.assertGreater(len(tag), 0)
+
+    def test_no_broken_parentheses(self):
+        """No broken parentheses from split (asian_fantasy fixed)."""
+        result = self.norm.normalize(["asian_fantasy"])
+        self.assertEqual(result, ["Азиатское фэнтези"])
+        # Ensure no tag starts with ( or ends with )
+        for tag in result:
+            self.assertFalse(tag.startswith("("), f"Tag starts with (: {tag}")
+            self.assertFalse(tag.endswith(")"), f"Tag ends with ): {tag}")
+
+    def test_no_broken_colon_fragments(self):
+        """No broken colon fragments (nonf_biography_celebrities fixed)."""
+        result = self.norm.normalize(["nonf_biography_celebrities"])
+        self.assertEqual(result, ["Биографии и мемуары: звезды"])
 
 
 if __name__ == "__main__":
