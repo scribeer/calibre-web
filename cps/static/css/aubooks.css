@@ -475,13 +475,14 @@ a:hover {
   word-break: break-word;
 }
 
-.aubooks-main .single .row {
+.aubooks-detail-layout {
   display: grid;
   grid-template-columns: minmax(0, auto) minmax(0, 1fr);
   gap: 0 1.5rem;
+  align-items: start;
 }
 
-.aubooks-main .single .book-meta {
+.aubooks-detail-content {
   min-width: 0;
 }
 
@@ -715,7 +716,7 @@ a:hover {
     padding: 8px 15px;
   }
 
-  .aubooks-main .single .row {
+  .aubooks-detail-layout {
     grid-template-columns: 1fr;
   }
 

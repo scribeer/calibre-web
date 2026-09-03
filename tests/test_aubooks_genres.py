@@ -168,5 +168,35 @@ class AubooksGenresTest(unittest.TestCase):
         self.assertEqual(sorted(det["category_tag_ids"]), [100, 200])
 
 
+class AubooksDetailTemplateTest(unittest.TestCase):
+
+    def test_detail_template_has_cover_deferred_loading(self):
+        from pathlib import Path
+        tpl = Path("cps/themes/aubooks/templates/detail.html").read_text()
+        self.assertIn('id="detailcover"', tpl)
+        self.assertIn("data-src", tpl)
+        self.assertIn("get_cover", tpl)
+        self.assertIn("onerror", tpl)
+
+    def test_detail_template_has_layout_wrapper(self):
+        from pathlib import Path
+        tpl = Path("cps/themes/aubooks/templates/detail.html").read_text()
+        self.assertIn("aubooks-detail-layout", tpl)
+        self.assertIn("aubooks-detail-cover-column", tpl)
+        self.assertIn("aubooks-detail-content", tpl)
+
+    def test_detail_template_no_bootstrap_grid_row(self):
+        from pathlib import Path
+        tpl = Path("cps/themes/aubooks/templates/detail.html").read_text()
+        self.assertNotRegex(tpl, r'class="row"')
+
+    def test_css_has_detail_layout_grid(self):
+        from pathlib import Path
+        css = Path("cps/static/css/aubooks.css").read_text()
+        self.assertIn(".aubooks-detail-layout", css)
+        self.assertIn("grid-template-columns", css)
+        self.assertIn(".aubooks-detail-content", css)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -27,8 +27,8 @@
 </nav>
 {% endif %}
 <div class="single">
-    <div class="row">
-        <div class="col-sm-3 col-lg-3 col-xs-5 aubooks-detail-cover-column">
+    <div class="aubooks-detail-layout">
+        <div class="aubooks-detail-cover-column">
             <div class="cover">
                 <button type="button" id="detailcover" class="aubooks-cover-button" aria-label="{{_('Cover')}}: {{entry.title}}">
                     <img alt="" decoding="async" loading="lazy"
@@ -37,7 +37,7 @@
                 </button>
             </div>
         </div>
-        <div class="col-sm-9 col-lg-9 book-meta">
+        <div class="aubooks-detail-content book-meta">
             {% if is_xhr %}<h3 id="title">{{entry.title}}</h3>{% else %}<h1 id="title">{{entry.title}}</h1>{% endif %}
             <p class="author"><span class="aubooks-meta-label">{{_('Author')}}:</span>
                 {% for author in entry.ordered_authors %}
