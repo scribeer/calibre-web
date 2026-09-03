@@ -1,0 +1,31 @@
+raw_tag	books	option_a	option_b	recommendation	reason
+Эзотерика	1401	genre → Эзотерика thematic → subject matter	Keep as thematic. Not a literary genre.	Subject matter, not genre
+Здоровье	779	genre → Здоровье thematic → subject matter	Keep as thematic. Subject matter.	Subject matter, not genre
+Философия	327	genre → Философия thematic → subject matter	Keep as thematic. Subject matter.	Subject matter, not genre
+Культурология	143	genre → Культурология thematic → subject matter	Keep as thematic. Subject matter.	Subject matter, not genre
+Иностранная проза	61	genre → Иностранная проза parent → Проза	Keep as genre. Literary category.	Literary category, not subject
+sf-history	60	genre → Историческая фантастика parent → Фантастика	Keep as genre. Flibusta code.	Flibusta genre code
+Компьютерная литература	60	genre → Компьютерная литература parent → Наука и образование	Keep as genre. Non-fiction form.	Non-fiction literary form
+Экономика и бизнес	60	genre → Экономика и бизнес parent → Деловая литература	Keep as genre. Business literature.	Business literature sub-genre
+Мелодрама	59	genre → Мелодрама parent → Любовные романы	Keep as genre. Romance sub-genre.	Romance sub-genre
+fantasy-action	56	genre → Боевое фэнтези parent → Фантастика	Keep as genre. Flibusta code.	Flibusta genre code
+foreign_home	55	genre → Зарубежная литература parent → Проза	Keep as genre. Flibusta code.	Flibusta genre code
+sf-action	55	genre → Боевая фантастика parent → Фантастика	Keep as genre. Flibusta code.	Flibusta genre code
+marketing	52	genre → Маркетинг parent → Деловая литература	Keep as genre. Business literature.	Business literature sub-genre
+Popadancy (popadancy)	52	genre → Попаданцы parent → Фантастика	Keep as genre. Already mapped.	Already mapped
+Эротика и любовь	187	genre → Эротика и любовь parent → Любовные романы	Keep as genre. Romance sub-genre.	Romance sub-genre
+Любовь и эротика	152	genre → Любовь и эротика parent → Любовные романы	Keep as genre. Romance sub-genre.	Romance sub-genre
+Любовные истории	145	genre → Любовные истории parent → Любовные романы	Keep as genre. Romance sub-genre.	Romance sub-genre
+Любовная фантастика	70	genre → Любовная фантастика parent → Любовные романы	Keep as genre. Romance sub-genre.	Romance sub-genre
+Приключения с животными	69	genre → Приключения с животными parent → Приключения	Keep as genre. Adventure sub-genre.	Adventure sub-genre
+Современные детективы	68	genre → Современные детективы parent → Детективы и триллеры	Keep as genre. Detective sub-genre.	Detective sub-genre
+Любовная история	65	genre → Любовная история parent → Любовные романы	Keep as genre. Romance sub-genre.	Romance sub-genre
+Короткие любовные истории	44	genre → Короткие любовные истории parent → Любовные романы	Keep as genre. Romance sub-genre.	Romance sub-genre
+Историческая литература	52	genre → Историческая литература parent → Проза	Keep as genre. Literary category.	Literary category
+essay	50	genre → Эссе parent → Проза	Keep as genre. Literary form.	Literary form
+буддизм	49	genre → Буддизм parent → Эзотерика	Keep as genre. Religion/spirituality.	Religion sub-genre
+dragon_fantasy	48	genre → Фэнтези о драконах parent → Фантастика	Keep as genre. Fantasy sub-genre.	Fantasy sub-genre
+vampire_book	45	genre → Книги о вампирах parent → Фантастика	Keep as genre. Fantasy sub-genre.	Fantasy sub-genre
+Социальная психология	45	genre → Социальная психология parent → Наука и образование	Keep as thematic. Subject matter.	Subject matter, not genre
+Психология бизнеса	41	genre → Психология бизнеса parent → Деловая литература	Keep as thematic. Subject matter.	Subject matter, not genre
+Исторические эпохи	41	genre → Исторические эпохи parent → Документальная литература	Keep as thematic. Subject matter.	Subject matter, not genre
