@@ -261,5 +261,81 @@ class TestMappingStats(unittest.TestCase):
                          stats["total_entries"])
 
 
+class TestMultiTagCanonical(unittest.TestCase):
+    """Тест разделения comma-separated canonical values на отдельные теги."""
+
+    def setUp(self):
+        self.norm = GenreNormalizer()
+
+    def test_two_tag_split(self):
+        """network_literature → Самиздат, сетевая литература."""
+        result = self.norm.normalize(["network_literature"])
+        self.assertEqual(result, ["Самиздат", "сетевая литература"])
+
+    def test_three_tag_split(self):
+        """sci_popular → 3 tags."""
+        result = self.norm.normalize(["sci_popular"])
+        self.assertEqual(len(result), 3)
+        self.assertIn("Образовательная", result)
+        self.assertIn("прикладная", result)
+        self.assertIn("научно-популярная литература", result)
+
+    def test_dedup_with_split_canonical(self):
+        """Unknown tag matching canonical from split is deduped."""
+        result = self.norm.normalize(["network_literature", "Самиздат"])
+        self.assertEqual(result, ["Самиздат", "сетевая литература"])
+
+    def test_dedup_case_insensitive_with_split(self):
+        """Case-insensitive dedup works across split canonical values."""
+        result = self.norm.normalize(["network_literature", "самиздат"])
+        self.assertEqual(result, ["Самиздат", "сетевая литература"])
+
+    def test_unknown_tags_not_deduped_among_themselves(self):
+        """Unknown tags are not deduped among themselves."""
+        result = self.norm.normalize(["foo", "Foo", "FOO"])
+        self.assertEqual(result, ["foo", "Foo", "FOO"])
+
+    def test_split_canonical_preserves_order(self):
+        """Split canonical tags appear in mapping order."""
+        result = self.norm.normalize(["love_sf"])
+        self.assertEqual(result, ["Любовное фэнтези", "любовно-фантастические романы"])
+
+    def test_split_across_multiple_raw_tags(self):
+        """Two raw tags each producing split canonical values."""
+        result = self.norm.normalize(["network_literature", "love_sf"])
+        self.assertEqual(len(result), 4)
+        self.assertEqual(result, [
+            "Самиздат", "сетевая литература",
+            "Любовное фэнтези", "любовно-фантастические романы"
+        ])
+
+    def test_split_no_duplicates_across_tags(self):
+        """No duplicates when split canonical values overlap with other raw tags."""
+        # network_literature produces "Самиздат"
+        # If "Самиздат" also appears as raw tag, it should be deduped
+        result = self.norm.normalize(["network_literature", "Самиздат", "сетевая литература"])
+        self.assertEqual(result, ["Самиздат", "сетевая литература"])
+
+    def test_dry_run_shows_canonical_tags(self):
+        """dry_run includes canonical_tags list for multi-tag mappings."""
+        d = self.norm.normalize_dry(["network_literature"])
+        change = d["changes"][0]
+        self.assertEqual(change["canonical_tags"], ["Самиздат", "сетевая литература"])
+        self.assertEqual(change["type"], "mapped")
+        self.assertEqual(d["after"], ["Самиздат", "сетевая литература"])
+
+    def test_single_comma_canonical_still_works(self):
+        """Single canonical value (no comma) still works correctly."""
+        result = self.norm.normalize(["det_action"])
+        self.assertEqual(result, ["Боевик"])
+
+    def test_split_trim_parts(self):
+        """Whitespace around split parts is trimmed."""
+        result = self.norm.normalize(["network_literature"])
+        for tag in result:
+            self.assertEqual(tag, tag.strip())
+            self.assertGreater(len(tag), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
