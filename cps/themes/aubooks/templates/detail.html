@@ -304,19 +304,25 @@
                                     <span class="glyphicon glyphicon-cog" aria-hidden="true"></span> {{ _('Generating audio…') }}
                                 </button>
                             {% elif aubooks_audio_status == 'failed' %}
-                                <button type="button" class="btn btn-warning"
-                                        data-book-id="{{ entry.id }}"
-                                        data-audio-status="failed"
-                                        aria-disabled="false">
-                                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> {{ _('Retry audio') }}
-                                </button>
+                                <form method="POST" action="{{ url_for('web.generate_audio', book_id=entry.id) }}" style="display:inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-warning"
+                                            data-book-id="{{ entry.id }}"
+                                            data-audio-status="failed">
+                                        <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> {{ _('Retry audio') }}
+                                    </button>
+                                </form>
                             {% else %}
-                                <button type="button" class="btn btn-default"
-                                        data-book-id="{{ entry.id }}"
-                                        data-audio-status="not_available"
-                                        aria-disabled="false">
-                                    <span class="glyphicon glyphicon-music" aria-hidden="true"></span> {{ _('Generate audio') }}
-                                </button>
+                                {% if current_user.role_tts() %}
+                                <form method="POST" action="{{ url_for('web.generate_audio', book_id=entry.id) }}" style="display:inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-default"
+                                            data-book-id="{{ entry.id }}"
+                                            data-audio-status="not_available">
+                                        <span class="glyphicon glyphicon-music" aria-hidden="true"></span> {{ _('Generate audio') }}
+                                    </button>
+                                </form>
+                                {% endif %}
                             {% endif %}
                         </div>
                     {% endif %}

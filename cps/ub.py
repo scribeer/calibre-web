@@ -172,6 +172,9 @@ class UserBase:
     def role_viewer(self):
         return self._has_role(constants.ROLE_VIEWER)
 
+    def role_tts(self):
+        return self._has_role(constants.ROLE_GENERATE_TTS)
+
     @property
     def is_active(self):
         return True

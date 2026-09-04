@@ -21,6 +21,7 @@
 import os
 import json
 import mimetypes
+import subprocess
 import chardet  # dependency of requests
 import copy
 from importlib.metadata import metadata
@@ -1804,3 +1805,124 @@ def show_book(book_id):
         abort(404)
     from .seo import book_url
     return redirect(book_url(book_id, create=True), code=301)
+
+
+# ---------------------------------------------------------------------------
+# AU-Books: Generate Audio (TTS)
+# ---------------------------------------------------------------------------
+
+# Source formats accepted by 1au-prepare_book.py (in priority order)
+_TTS_SOURCE_FORMATS = ["EPUB", "FB2", "PDF", "TXT", "MOBI", "AZW3", "AZW", "KEPUB", "DOCX", "RTF", "HTML"]
+
+# Path to the pipeline entry point
+_AUBOOK_REMOTE = os.path.join(os.path.expanduser("~"), "bin", "aubook-remote.sh")
+
+
+def _find_tts_source(book):
+    """Find the best source file for TTS from a book's available formats.
+
+    Returns (file_path, format_name) or (None, None) if no suitable format.
+    """
+    book_dir = os.path.join(config.get_book_path(), book.path)
+    for fmt in _TTS_SOURCE_FORMATS:
+        data = calibre_db.get_book_format(book.id, fmt)
+        if data is not None:
+            file_path = os.path.normpath(
+                os.path.join(book_dir, data.name + "." + data.format.lower())
+            )
+            if os.path.isfile(file_path):
+                return file_path, data.format.lower()
+    return None, None
+
+
+@web.route("/books/<int:book_id>/generate-audio", methods=["POST"])
+@user_login_required
+def generate_audio(book_id):
+    """Create a TTS job for the given book.
+
+    Validates permissions, current audio status, and source file availability,
+    then launches aubook-remote.sh asynchronously. Returns redirect via PRG.
+    """
+    # 1. Auth check — must have TTS role
+    if not current_user.role_tts():
+        abort(403)
+
+    # 2. Book exists?
+    entry = calibre_db.get_filtered_book(book_id, allow_show_archived=True)
+    if entry is None:
+        flash(_("Book not found."), category="error")
+        abort(404)
+
+    # 3. Current audio status — only not_available or failed allowed
+    from .aubooks_audio import get_audio_status, get_audio_record
+    audio_status = get_audio_status(book_id)
+
+    if audio_status in ("queued", "processing"):
+        flash(_("This book is already being processed."), category="warning")
+        return redirect(url_for("web.show_book", book_id=book_id), code=303)
+
+    if audio_status == "ready":
+        flash(_("Audio is already available."), category="info")
+        return redirect(url_for("web.show_book", book_id=book_id), code=303)
+
+    # 4. Find source file
+    source_path, source_fmt = _find_tts_source(entry)
+    if source_path is None:
+        flash(_("No supported source format available for TTS."), category="error")
+        return redirect(url_for("web.show_book", book_id=book_id), code=303)
+
+    # 5. Prepare audio.db record
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.expanduser("~"), "aubooks"))
+    from audio_index import (
+        create_queued,
+        reset_for_retry,
+        get_status,
+    )
+
+    if audio_status == "failed":
+        try:
+            reset_for_retry(book_id)
+        except ValueError:
+            log.warning("Failed to reset audio status for book %d", book_id)
+            flash(_("Could not reset audio status."), category="error")
+            return redirect(url_for("web.show_book", book_id=book_id), code=303)
+    elif audio_status == "not_available":
+        try:
+            create_queued(book_id)
+        except ValueError as e:
+            log.warning("Failed to create audio record for book %d: %s", book_id, e)
+            flash(_("Could not create audio job."), category="error")
+            return redirect(url_for("web.show_book", book_id=book_id), code=303)
+
+    # 6. Launch pipeline asynchronously (non-blocking)
+    try:
+        proc = subprocess.Popen(
+            [_AUBOOK_REMOTE, "start", source_path, "1", "publish", str(book_id)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except FileNotFoundError:
+        log.error("Pipeline not found: %s", _AUBOOK_REMOTE)
+        # Revert: mark back to failed so user can retry
+        from audio_index import mark_failed
+        try:
+            mark_failed(book_id, "pipeline not found: aubook-remote.sh")
+        except ValueError:
+            pass
+        flash(_("Audio generation service is unavailable."), category="error")
+        return redirect(url_for("web.show_book", book_id=book_id), code=303)
+    except OSError as e:
+        log.error("Failed to start TTS pipeline for book %d: %s", book_id, e)
+        from audio_index import mark_failed
+        try:
+            mark_failed(book_id, f"failed to start pipeline: {e}")
+        except ValueError:
+            pass
+        flash(_("Could not start audio generation."), category="error")
+        return redirect(url_for("web.show_book", book_id=book_id), code=303)
+
+    log.info("TTS job started for book %d (PID %s)", book_id, proc.pid)
+    flash(_("Book added to the audio queue."), category="success")
+    return redirect(url_for("web.show_book", book_id=book_id), code=303)
