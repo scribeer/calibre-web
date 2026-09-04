@@ -1400,9 +1400,6 @@ def register_post():
     to_save = request.form.to_dict()
     if current_user is not None and current_user.is_authenticated:
         return redirect(url_for('web.index'))
-    if not config.get_mail_server_configured():
-        flash(_("Oops! Email server is not configured, please contact your administrator."), category="error")
-        return render_title_template('register.html', title=_("Register"), page="register")
     nickname = strip_whitespaces(to_save.get("email", "")) if config.config_register_email else to_save.get('name')
     if not nickname or not to_save.get("email"):
         flash(_("Oops! Please complete all fields."), category="error")
@@ -1414,11 +1411,34 @@ def register_post():
         flash(str(ex), category="error")
         return render_title_template('register.html', title=_("Register"), page="register")
 
+    # Determine password: user-chosen or random (email-based flow)
+    form_password = to_save.get("password", "").strip()
+    form_confirm = to_save.get("confirm_password", "").strip()
+    use_user_password = bool(form_password)
+
+    if use_user_password:
+        if not form_confirm:
+            flash(_("Oops! Please confirm your password."), category="error")
+            return render_title_template('register.html', title=_("Register"), page="register")
+        if form_password != form_confirm:
+            flash(_("Oops! Passwords do not match."), category="error")
+            return render_title_template('register.html', title=_("Register"), page="register")
+        try:
+            valid_password(form_password)
+        except Exception as ex:
+            flash(str(ex), category="error")
+            return render_title_template('register.html', title=_("Register"), page="register")
+        password = form_password
+    else:
+        if not config.get_mail_server_configured():
+            flash(_("Oops! Email server is not configured, please contact your administrator."), category="error")
+            return render_title_template('register.html', title=_("Register"), page="register")
+        password = generate_random_password(config.config_password_min_length)
+
     content = ub.User()
     if check_valid_domain(email):
         content.name = nickname
         content.email = email
-        password = generate_random_password(config.config_password_min_length)
         content.password = generate_password_hash(password)
         content.role = config.config_default_role
         content.locale = config.config_default_locale
@@ -1432,7 +1452,8 @@ def register_post():
             ub.session.commit()
             if feature_support['oauth']:
                 register_user_with_oauth(content)
-            send_registration_mail(strip_whitespaces(to_save.get("email", "")), nickname, password, locale=content.locale)
+            if not use_user_password:
+                send_registration_mail(strip_whitespaces(to_save.get("email", "")), nickname, password, locale=content.locale)
         except Exception:
             ub.session.rollback()
             flash(_("Oops! An unknown error occurred. Please try again later."), category="error")
@@ -1441,7 +1462,10 @@ def register_post():
         flash(_("Oops! Your Email is not allowed."), category="error")
         log.warning('Registering failed for user "{}" Email: {}'.format(nickname, to_save.get("email","")))
         return render_title_template('register.html', title=_("Register"), page="register")
-    flash(_("Success! Confirmation Email has been sent."), category="success")
+    if use_user_password:
+        flash(_("Registration successful. You can now log in."), category="success")
+    else:
+        flash(_("Success! Confirmation Email has been sent."), category="success")
     return redirect(url_for('web.login'))
 
 
@@ -1811,37 +1835,15 @@ def show_book(book_id):
 # AU-Books: Generate Audio (TTS)
 # ---------------------------------------------------------------------------
 
-# Source formats accepted by 1au-prepare_book.py (in priority order)
-_TTS_SOURCE_FORMATS = ["EPUB", "FB2", "PDF", "TXT", "MOBI", "AZW3", "AZW", "KEPUB", "DOCX", "RTF", "HTML"]
-
-# Path to the pipeline entry point
-_AUBOOK_REMOTE = os.path.join(os.path.expanduser("~"), "bin", "aubook-remote.sh")
-
-
-def _find_tts_source(book):
-    """Find the best source file for TTS from a book's available formats.
-
-    Returns (file_path, format_name) or (None, None) if no suitable format.
-    """
-    book_dir = os.path.join(config.get_book_path(), book.path)
-    for fmt in _TTS_SOURCE_FORMATS:
-        data = calibre_db.get_book_format(book.id, fmt)
-        if data is not None:
-            file_path = os.path.normpath(
-                os.path.join(book_dir, data.name + "." + data.format.lower())
-            )
-            if os.path.isfile(file_path):
-                return file_path, data.format.lower()
-    return None, None
-
 
 @web.route("/books/<int:book_id>/generate-audio", methods=["POST"])
 @user_login_required
 def generate_audio(book_id):
     """Create a TTS job for the given book.
 
-    Validates permissions, current audio status, and source file availability,
-    then launches aubook-remote.sh asynchronously. Returns redirect via PRG.
+    Delegates to aubook-remote.sh start-book-id via the transport layer.
+    The pipeline finds the source file in the Calibre library on VPS1.
+    Returns redirect via PRG pattern.
     """
     # 1. Auth check — must have TTS role
     if not current_user.role_tts():
@@ -1854,7 +1856,7 @@ def generate_audio(book_id):
         abort(404)
 
     # 3. Current audio status — only not_available or failed allowed
-    from .aubooks_audio import get_audio_status, get_audio_record
+    from .aubooks_audio import get_audio_status
     audio_status = get_audio_status(book_id)
 
     if audio_status in ("queued", "processing"):
@@ -1865,64 +1867,16 @@ def generate_audio(book_id):
         flash(_("Audio is already available."), category="info")
         return redirect(url_for("web.show_book", book_id=book_id), code=303)
 
-    # 4. Find source file
-    source_path, source_fmt = _find_tts_source(entry)
-    if source_path is None:
-        flash(_("No supported source format available for TTS."), category="error")
-        return redirect(url_for("web.show_book", book_id=book_id), code=303)
+    # 4. Queue via transport layer (no local source lookup)
+    from .aubooks_tts import queue_book
+    result = queue_book(book_id)
 
-    # 5. Prepare audio.db record
-    import sys as _sys
-    _sys.path.insert(0, os.path.join(os.path.expanduser("~"), "aubooks"))
-    from audio_index import (
-        create_queued,
-        reset_for_retry,
-        get_status,
-    )
+    if result.success:
+        log.info("TTS job queued for book %d: %s", book_id, result.job_id)
+        flash(_("Book added to the audio queue."), category="success")
+    else:
+        log.warning("TTS queue failed for book %d (exit %d): %s",
+                     book_id, result.exit_code, result.error_message)
+        flash(_(result.error_message), category="error")
 
-    if audio_status == "failed":
-        try:
-            reset_for_retry(book_id)
-        except ValueError:
-            log.warning("Failed to reset audio status for book %d", book_id)
-            flash(_("Could not reset audio status."), category="error")
-            return redirect(url_for("web.show_book", book_id=book_id), code=303)
-    elif audio_status == "not_available":
-        try:
-            create_queued(book_id)
-        except ValueError as e:
-            log.warning("Failed to create audio record for book %d: %s", book_id, e)
-            flash(_("Could not create audio job."), category="error")
-            return redirect(url_for("web.show_book", book_id=book_id), code=303)
-
-    # 6. Launch pipeline asynchronously (non-blocking)
-    try:
-        proc = subprocess.Popen(
-            [_AUBOOK_REMOTE, "start", source_path, "1", "publish", str(book_id)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-    except FileNotFoundError:
-        log.error("Pipeline not found: %s", _AUBOOK_REMOTE)
-        # Revert: mark back to failed so user can retry
-        from audio_index import mark_failed
-        try:
-            mark_failed(book_id, "pipeline not found: aubook-remote.sh")
-        except ValueError:
-            pass
-        flash(_("Audio generation service is unavailable."), category="error")
-        return redirect(url_for("web.show_book", book_id=book_id), code=303)
-    except OSError as e:
-        log.error("Failed to start TTS pipeline for book %d: %s", book_id, e)
-        from audio_index import mark_failed
-        try:
-            mark_failed(book_id, f"failed to start pipeline: {e}")
-        except ValueError:
-            pass
-        flash(_("Could not start audio generation."), category="error")
-        return redirect(url_for("web.show_book", book_id=book_id), code=303)
-
-    log.info("TTS job started for book %d (PID %s)", book_id, proc.pid)
-    flash(_("Book added to the audio queue."), category="success")
     return redirect(url_for("web.show_book", book_id=book_id), code=303)
