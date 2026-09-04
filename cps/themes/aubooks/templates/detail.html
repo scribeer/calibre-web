@@ -279,6 +279,47 @@
                             {% endif %}
                         </div>
                     {% endif %}
+                    {# AU-Books: audio status from audio.db #}
+                    {% if aubooks_audio_status is defined %}
+                        <div class="btn-group" role="group" aria-label="{{_('Audio book status')}}">
+                            {% if aubooks_audio_status == 'ready' %}
+                                <button type="button" class="btn btn-success"
+                                        data-book-id="{{ entry.id }}"
+                                        data-audio-status="ready"
+                                        aria-disabled="false">
+                                    <span class="glyphicon glyphicon-play" aria-hidden="true"></span> {{ _('Listen') }}
+                                </button>
+                            {% elif aubooks_audio_status == 'queued' %}
+                                <button type="button" class="btn btn-default" disabled
+                                        aria-disabled="true"
+                                        data-book-id="{{ entry.id }}"
+                                        data-audio-status="queued">
+                                    <span class="glyphicon glyphicon-time" aria-hidden="true"></span> {{ _('In queue') }}
+                                </button>
+                            {% elif aubooks_audio_status == 'processing' %}
+                                <button type="button" class="btn btn-default" disabled
+                                        aria-disabled="true"
+                                        data-book-id="{{ entry.id }}"
+                                        data-audio-status="processing">
+                                    <span class="glyphicon glyphicon-cog" aria-hidden="true"></span> {{ _('Generating audio…') }}
+                                </button>
+                            {% elif aubooks_audio_status == 'failed' %}
+                                <button type="button" class="btn btn-warning"
+                                        data-book-id="{{ entry.id }}"
+                                        data-audio-status="failed"
+                                        aria-disabled="false">
+                                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> {{ _('Retry audio') }}
+                                </button>
+                            {% else %}
+                                <button type="button" class="btn btn-default"
+                                        data-book-id="{{ entry.id }}"
+                                        data-audio-status="not_available"
+                                        aria-disabled="false">
+                                    <span class="glyphicon glyphicon-music" aria-hidden="true"></span> {{ _('Generate audio') }}
+                                </button>
+                            {% endif %}
+                        </div>
+                    {% endif %}
                 </div>
             </div>
             <div class="more-stuff">

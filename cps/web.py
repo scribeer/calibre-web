@@ -1765,6 +1765,18 @@ def render_book_detail(book_id, canonical_route):
             if media_format.format.lower() in constants.EXTENSIONS_AUDIO:
                 entry.audio_entries.append(media_format.format.lower())
 
+        # Audio index status from audio.db (read-only)
+        aubooks_audio_status = "not_available"
+        aubooks_audio_record = None
+        if get_active_theme_identifier() == "aubooks":
+            try:
+                from .aubooks_audio import get_audio_status, get_audio_record
+                aubooks_audio_status = get_audio_status(book_id)
+                if aubooks_audio_status != "not_available":
+                    aubooks_audio_record = get_audio_record(book_id)
+            except Exception as e:
+                log.debug("Failed to read audio status for book %d: %s", book_id, e)
+
         from .seo import detail_context
         return render_title_template('detail.html',
                                      entry=entry,
@@ -1774,6 +1786,8 @@ def render_book_detail(book_id, canonical_route):
                                      books_shelfs=book_in_shelves,
                                      page="book",
                                      aubooks_genre_groups=aubooks_genre_groups,
+                                     aubooks_audio_status=aubooks_audio_status,
+                                     aubooks_audio_record=aubooks_audio_record,
                                      **detail_context(entry, canonical_route))
     else:
         log.debug("Selected book is unavailable. File does not exist or is not accessible")
