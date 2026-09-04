@@ -1417,16 +1417,14 @@ def register_post():
     use_user_password = bool(form_password)
 
     if use_user_password:
+        if not form_password:
+            flash(_("Oops! Password cannot be empty."), category="error")
+            return render_title_template('register.html', title=_("Register"), page="register")
         if not form_confirm:
             flash(_("Oops! Please confirm your password."), category="error")
             return render_title_template('register.html', title=_("Register"), page="register")
         if form_password != form_confirm:
             flash(_("Oops! Passwords do not match."), category="error")
-            return render_title_template('register.html', title=_("Register"), page="register")
-        try:
-            valid_password(form_password)
-        except Exception as ex:
-            flash(str(ex), category="error")
             return render_title_template('register.html', title=_("Register"), page="register")
         password = form_password
     else:

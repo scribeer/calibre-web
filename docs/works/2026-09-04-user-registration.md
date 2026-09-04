@@ -28,9 +28,10 @@
 
 2. **`cps/web.py`** — модификация `register_post()`
    - Если `password` и `confirm_password` переданы в форме: используется user-chosen flow
-   - Валидация: совпадение паролей + `valid_password()` (политика паролей не ослаблена)
+   - Валидация: непустой пароль + совпадение паролей (глобальная `valid_password()` НЕ вызывается)
    - Если пароль не передан: fallback на стандартный flow (random password + email)
    - После успешной регистрации: redirect на `/login` с сообщением
+   - Парольная политика (min length, uppercase, digits, specials) НЕ применяется к публичной регистрации
 
 3. **`cps/themes/aubooks/templates/login.html`** — добавлена ссылка на регистрацию
    - Показывается только когда `config_public_reg = 1`
