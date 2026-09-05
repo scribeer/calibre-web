@@ -26,7 +26,9 @@ def get_locale():
             except (UnknownLocaleError, ValueError) as e:
                 log.debug('Could not parse locale "%s": %s', x, e)
 
-    return negotiate_locale(preferred or ['en'], get_available_translations())
+    from . import config
+    fallback = config.config_default_locale or 'en'
+    return negotiate_locale(preferred or [fallback], get_available_translations())
 
 
 def get_user_locale_language(user_language):

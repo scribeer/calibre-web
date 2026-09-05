@@ -796,7 +796,7 @@ msgstr "%(format)s не найден: %(fn)s"
 #: cps/themes/caliblur/templates/detail.html:128
 #: cps/themes/standard/templates/detail.html:66
 msgid "Send to eReader"
-msgstr ""
+msgstr "Отправить на eReader"
 
 #: cps/helper.py:106 cps/helper.py:126 cps/helper.py:238
 msgid "This Email has been sent via Calibre-Web."
@@ -968,7 +968,7 @@ msgstr "Только файлы в формате jpg / jpeg поддержив�
 
 #: cps/helper.py:989 cps/helper.py:1152
 msgid "Cover"
-msgstr ""
+msgstr "Обложка"
 
 #: cps/helper.py:1017
 msgid "Error executing UnRar"
@@ -2271,7 +2271,7 @@ msgstr "Прослушать в браузере"
 #: cps/themes/standard/templates/listenmp3.html:62
 #, python-format
 msgid "Book %(index)s of %(range)s"
-msgstr ""
+msgstr "Книга %(index)s из %(range)s"
 
 #: cps/themes/caliblur/templates/detail.html:279
 #: cps/themes/caliblur/templates/listenmp3.html:111
@@ -2478,7 +2478,7 @@ msgstr ""
 #: cps/themes/standard/templates/search.html:47
 #: cps/themes/standard/templates/shelf.html:22
 msgid "Sort title in alphabetical order"
-msgstr ""
+msgstr "Сортировать по названию в алфавитном порядке"
 
 #: cps/themes/caliblur/templates/index.html:77
 #: cps/themes/caliblur/templates/search.html:51
@@ -2488,7 +2488,7 @@ msgstr ""
 #: cps/themes/standard/templates/search.html:48
 #: cps/themes/standard/templates/shelf.html:23
 msgid "Sort title in reverse alphabetical order"
-msgstr ""
+msgstr "Сортировать по названию в обратном алфавитном порядке"
 
 #: cps/themes/caliblur/templates/index.html:78
 #: cps/themes/caliblur/templates/search.html:52
@@ -2575,7 +2575,7 @@ msgstr "Поиск в библиотеке"
 #: cps/themes/caliblur/templates/layout.html:54
 #: cps/themes/standard/templates/layout.html:50
 msgid "Simple Theme"
-msgstr ""
+msgstr "Простая тема"
 
 #: cps/themes/caliblur/templates/layout.html:59
 msgid "Account"
@@ -2640,7 +2640,7 @@ msgstr "Подробнее о книге"
 #: cps/themes/caliblur/templates/list.html:47
 #: cps/themes/standard/templates/list.html:22
 msgid "Grid"
-msgstr ""
+msgstr "Сетка"
 
 #: cps/themes/caliblur/templates/listenmp3.html:166
 msgid "Restore from archive"
@@ -2680,12 +2680,12 @@ msgstr "Пароль"
 #: cps/themes/caliblur/templates/login.html:17
 #: cps/themes/standard/templates/login.html:17
 msgid "Show password"
-msgstr ""
+msgstr "Показать пароль"
 
 #: cps/themes/caliblur/templates/login.html:17
 #: cps/themes/standard/templates/login.html:17
 msgid "Hide password"
-msgstr ""
+msgstr "Скрыть пароль"
 
 #: cps/themes/caliblur/templates/login.html:25
 #: cps/themes/standard/templates/login.html:25
@@ -2740,12 +2740,12 @@ msgstr "Добавить ограничение просмотра"
 #: cps/themes/caliblur/templates/modal_dialogs.html:50
 #: cps/themes/standard/templates/modal_dialogs.html:50
 msgid "This book format will be permanently erased from database"
-msgstr ""
+msgstr "Этот формат книги будет удалён из базы данных безвозвратно"
 
 #: cps/themes/caliblur/templates/modal_dialogs.html:51
 #: cps/themes/standard/templates/modal_dialogs.html:51
 msgid "This book will be permanently erased from database and hard disk"
-msgstr ""
+msgstr "Эта книга будет удалена из базы данных и с диска безвозвратно"
 
 #: cps/themes/caliblur/templates/modal_dialogs.html:55
 #: cps/themes/standard/templates/modal_dialogs.html:55
@@ -2760,38 +2760,38 @@ msgstr ""
 #: cps/themes/caliblur/templates/modal_dialogs.html:75
 #: cps/themes/standard/templates/modal_dialogs.html:75
 msgid "Choose File Location"
-msgstr ""
+msgstr "Выбрать расположение файла"
 
 #: cps/themes/caliblur/templates/modal_dialogs.html:82
 #: cps/themes/standard/templates/modal_dialogs.html:82
 msgid "type"
-msgstr ""
+msgstr "тип"
 
 #: cps/themes/caliblur/templates/modal_dialogs.html:83
 #: cps/themes/standard/templates/modal_dialogs.html:83
 msgid "name"
-msgstr ""
+msgstr "имя"
 
 #: cps/themes/caliblur/templates/modal_dialogs.html:84
 #: cps/themes/standard/templates/modal_dialogs.html:84
 msgid "size"
-msgstr ""
+msgstr "размер"
 
 #: cps/themes/caliblur/templates/modal_dialogs.html:90
 #: cps/themes/standard/templates/modal_dialogs.html:90
 msgid "Parent Directory"
-msgstr ""
+msgstr "Родительская папка"
 
 #: cps/themes/caliblur/templates/modal_dialogs.html:100
 #: cps/themes/standard/templates/modal_dialogs.html:100
 msgid "Select"
-msgstr ""
+msgstr "Выбрать"
 
 #: cps/themes/caliblur/templates/modal_dialogs.html:136
 #: cps/themes/standard/templates/modal_dialogs.html:135
 #: cps/themes/standard/templates/tasks.html:46
 msgid "Ok"
-msgstr ""
+msgstr "Ок"
 
 #: cps/themes/caliblur/templates/remote_login.html:5
 #: cps/themes/standard/templates/remote_login.html:5
@@ -2863,7 +2863,7 @@ msgstr "Результаты для:"
 #: cps/themes/caliblur/templates/search.html:32
 #: cps/themes/standard/templates/search.html:29
 msgid "Remove from shelf"
-msgstr ""
+msgstr "Удалить с полки"
 
 #: cps/themes/caliblur/templates/shelf.html:14
 #: cps/themes/standard/templates/admin.html:22
@@ -3501,7 +3501,7 @@ msgstr ""
 #: cps/themes/standard/templates/book_table.html:202
 #: cps/themes/standard/templates/detail.html:278
 msgid "Archive"
-msgstr ""
+msgstr "Архивировать"
 
 #: cps/themes/standard/templates/book_table.html:218
 msgid "The following books will be unarchived:"
@@ -3945,7 +3945,7 @@ msgstr ""
 
 #: cps/themes/standard/templates/grid.html:22
 msgid "List"
-msgstr ""
+msgstr "Список"
 
 #: cps/themes/standard/templates/logviewer.html:6
 msgid "Show Calibre-Web Log: "
@@ -3988,6 +3988,10 @@ msgstr "Светлая"
 #: cps/themes/standard/templates/readcbr.html:105
 msgid "Dark"
 msgstr "Темная"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "System"
+msgstr "Системная"
 
 #: cps/themes/standard/templates/read.html:93
 msgid "Sepia"
@@ -4206,6 +4210,42 @@ msgstr "Выберите имя пользователя"
 msgid "Your Email"
 msgstr "Ваш email-адрес"
 
+#: cps/themes/aubooks/templates/register.html
+msgid "Confirm password"
+msgstr "Подтвердите пароль"
+
+#: cps/themes/aubooks/templates/register.html
+msgid "Create a password"
+msgstr "Придумайте пароль"
+
+#: cps/themes/aubooks/templates/register.html
+msgid "Repeat your password"
+msgstr "Повторите пароль"
+
+#: cps/themes/aubooks/templates/register.html
+msgid "Your email address"
+msgstr "Ваш email-адрес"
+
+#: cps/themes/aubooks/templates/login.html cps/themes/aubooks/templates/register.html
+msgid "Show password"
+msgstr "Показать пароль"
+
+#: cps/themes/aubooks/templates/login.html cps/themes/aubooks/templates/register.html
+msgid "Hide password"
+msgstr "Скрыть пароль"
+
+#: cps/themes/aubooks/templates/login.html
+msgid "Don't have an account? Register"
+msgstr "Нет аккаунта? Зарегистрироваться"
+
+#: cps/themes/aubooks/templates/register.html
+msgid "Already have an account? Log in"
+msgstr "Уже есть аккаунт? Войти"
+
+#: cps/themes/aubooks/templates/register.html
+msgid "Create a new account to access AU-Books"
+msgstr "Создайте новую учётную запись для доступа к AU-Books"
+
 #: cps/themes/standard/templates/schedule_edit.html:33
 msgid "Generate Series Cover Thumbnails"
 msgstr ""
@@ -4404,4 +4444,154 @@ msgstr ""
 #: cps/themes/standard/templates/user_table.html:157
 msgid "Show Read/Unread Section"
 msgstr ""
+
+# --- AU-Books missing translations ---
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Audio book status"
+msgstr "Статус аудиокниги"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Books must first be archived and the device synced before a book can safely be deleted."
+msgstr "Книги необходимо сначала архивировать и синхронизировать устройство, прежде чем их можно будет безопасно удалить."
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "Breadcrumb"
+msgstr "Навигационная цепочка"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Choose File Location"
+msgstr "Выбрать расположение файла"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Cover"
+msgstr "Обложка"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Generate audio"
+msgstr "Сгенерировать аудио"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Generating audio…"
+msgstr "Генерация аудио…"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "Grid"
+msgstr "Сетка"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Important Kobo Note: deleted books will remain on any paired Kobo device."
+msgstr "Важное примечание Kobo: удалённые книги останутся на любом привязанном устройстве Kobo."
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "In queue"
+msgstr "В очереди"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "Library navigation"
+msgstr "Навигация по библиотеке"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "List"
+msgstr "Список"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Listen"
+msgstr "Слушать"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "Main navigation"
+msgstr "Основная навигация"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Mark Book as archived or not, to hide it in Calibre-Web and delete it from Kobo Reader"
+msgstr "Пометить книгу как архивную или убрать эту отметку, чтобы скрыть её в Calibre-Web и удалить с Kobo Reader"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Mark Book as Read or Unread"
+msgstr "Пометить книгу как прочитанную или непрочитанную"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "name"
+msgstr "имя"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "Next page"
+msgstr "Следующая страница"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Ok"
+msgstr "Ок"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Page"
+msgstr "Страница"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "Pagination"
+msgstr "Постраничная навигация"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Parent Directory"
+msgstr "Родительская папка"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "Previous page"
+msgstr "Предыдущая страница"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Remove from shelf"
+msgstr "Удалить с полки"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "results found"
+msgstr "найдено результатов"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Retry audio"
+msgstr "Повторить аудио"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "Search results"
+msgstr "Результаты поиска"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Select"
+msgstr "Выбрать"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Send to eReader"
+msgstr "Отправить на eReader"
+
+#: cps/themes/aubooks/templates/layout.html
+msgid "Simple Theme"
+msgstr "Простая тема"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "size"
+msgstr "размер"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Sort title in alphabetical order"
+msgstr "Сортировать по названию в алфавитном порядке"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Sort title in reverse alphabetical order"
+msgstr "Сортировать по названию в обратном алфавитном порядке"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "This book format will be permanently erased from database"
+msgstr "Этот формат книги будет удалён из базы данных безвозвратно"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "This book will be permanently erased from database and hard disk"
+msgstr "Эта книга будет удалена из базы данных и с диска безвозвратно"
+
+#: cps/themes/aubooks/templates/search.html
+msgid "Try a different search term or use Advanced Search to refine your query."
+msgstr "Попробуйте другой поисковый запрос или используйте расширенный поиск для уточнения."
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "type"
+msgstr "тип"
 

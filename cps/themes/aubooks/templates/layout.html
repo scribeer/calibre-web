@@ -183,7 +183,6 @@
                 {% endfor %}
               {% if not current_user.is_anonymous %}
                 <li id="nav_createshelf" class="create-shelf"><a href="{{url_for('shelf.create_shelf')}}">{{_('Create a Shelf')}}</a></li>
-                <li id="nav_about" {% if page == 'stat' %}class="active"{% endif %}><a href="{{url_for('about.stats')}}"{% if page == 'stat' %} aria-current="page"{% endif %}><span class="glyphicon glyphicon-info-sign" aria-hidden="true"></span> {{_('About')}}</a></li>
               {% endif %}
               {% endif %}
             </ul>
