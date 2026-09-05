@@ -789,34 +789,121 @@ a:hover {
 }
 
 /* ==========================================================================
-   24. Dark buttons — unified dark look across all themes
+   24. Dark buttons — unified dark look for ALL button variants
    ========================================================================== */
 
-.btn-default {
+/* All standard button variants get the same dark palette.
+   .btn-danger stays distinguishable (dark red) for destructive actions.
+   Specificity: .btn.btn-X (0-2-0) beats Bootstrap's .btn-X (0-1-0). */
+
+.btn.btn-default,
+.btn.btn-primary,
+.btn.btn-info,
+.btn.btn-success,
+.btn.btn-warning {
   background-color: #222222;
-  border-color: #333333;
+  border-color: #444444;
   color: #e0e0e0;
 }
 
-.btn-default:hover,
-.btn-default:focus {
+.btn.btn-default:hover,  .btn.btn-default:focus,
+.btn.btn-primary:hover,  .btn.btn-primary:focus,
+.btn.btn-info:hover,     .btn.btn-info:focus,
+.btn.btn-success:hover,  .btn.btn-success:focus,
+.btn.btn-warning:hover,  .btn.btn-warning:focus {
   background-color: #333333;
+  border-color: #555555;
+  color: #ffffff;
+}
+
+.btn.btn-default:active,  .btn.btn-default.active,
+.btn.btn-primary:active,  .btn.btn-primary.active,
+.btn.btn-info:active,     .btn.btn-info.active,
+.btn.btn-success:active,  .btn.btn-success.active,
+.btn.btn-warning:active,  .btn.btn-warning.active {
+  background-color: #1a1a1a;
+  border-color: #333333;
+  color: #ffffff;
+}
+
+.btn.btn-default[disabled],  .btn.btn-default.disabled,
+.btn.btn-primary[disabled],  .btn.btn-primary.disabled,
+.btn.btn-info[disabled],     .btn.btn-info.disabled,
+.btn.btn-success[disabled],  .btn.btn-success.disabled,
+.btn.btn-warning[disabled],  .btn.btn-warning.disabled {
+  background-color: #1a1a1a;
+  border-color: #333333;
+  color: #666666;
+}
+
+/* Dropdown buttons — dark caret */
+.btn.btn-default .caret,
+.btn.btn-primary .caret,
+.btn.btn-info .caret,
+.btn.btn-success .caret,
+.btn.btn-warning .caret {
+  border-top-color: #e0e0e0;
+  border-bottom-color: #e0e0e0;
+}
+
+/* Danger: dark red, still distinguishable */
+.btn.btn-danger {
+  background-color: #5c1a1a;
+  border-color: #7a2e2e;
+  color: #e0e0e0;
+}
+
+.btn.btn-danger:hover, .btn.btn-danger:focus {
+  background-color: #7a2e2e;
+  border-color: #994040;
+  color: #ffffff;
+}
+
+.btn.btn-danger:active, .btn.btn-danger.active {
+  background-color: #4a1414;
+  border-color: #5c1a1a;
+  color: #ffffff;
+}
+
+.btn.btn-danger[disabled], .btn.btn-danger.disabled {
+  background-color: #3a1010;
+  border-color: #5c1a1a;
+  color: #666666;
+}
+
+/* Pagination — override Bootstrap blue */
+.pagination > li > a,
+.pagination > li > span {
+  background-color: #222222;
   border-color: #444444;
+  color: #e0e0e0;
+}
+
+.pagination > li > a:hover,
+.pagination > li > span:hover,
+.pagination > li > a:focus,
+.pagination > li > span:focus {
+  background-color: #333333;
+  border-color: #555555;
   color: #ffffff;
 }
 
-.btn-default:active,
-.btn-default.active {
-  background-color: #1a1a1a;
-  border-color: #222222;
+.pagination > .active > a,
+.pagination > .active > span,
+.pagination > .active > a:hover,
+.pagination > .active > span:hover {
+  background-color: #444444;
+  border-color: #555555;
   color: #ffffff;
 }
 
-.btn-default[disabled],
-.btn-default.disabled {
+.pagination > .disabled > a,
+.pagination > .disabled > span,
+.pagination > .disabled > a:hover,
+.pagination > .disabled > span:hover {
   background-color: #1a1a1a;
-  border-color: #222222;
-  color: #777777;
+  border-color: #333333;
+  color: #666666;
 }
 
 /* ==========================================================================
@@ -977,90 +1064,77 @@ html[data-theme="dark"],
   color: #ffffff;
 }
 
-/* --- Buttons --- */
+/* --- Buttons (dark mode — same dark palette as light) --- */
 
-[data-theme="dark"] .btn-default {
-  background-color: var(--aubooks-surface-raised);
-  border-color: var(--aubooks-border-strong);
-  color: var(--aubooks-text);
+[data-theme="dark"] .btn-default,
+[data-theme="dark"] .btn-primary,
+[data-theme="dark"] .btn-info,
+[data-theme="dark"] .btn-success,
+[data-theme="dark"] .btn-warning {
+  background-color: #222222;
+  border-color: #444444;
+  color: #e0e0e0;
 }
 
-[data-theme="dark"] .btn-default:hover,
-[data-theme="dark"] .btn-default:focus {
-  background-color: var(--aubooks-surface-hover);
-  border-color: var(--aubooks-border-strong);
-  color: var(--aubooks-text);
+[data-theme="dark"] .btn-default:hover,  [data-theme="dark"] .btn-default:focus,
+[data-theme="dark"] .btn-primary:hover,  [data-theme="dark"] .btn-primary:focus,
+[data-theme="dark"] .btn-info:hover,     [data-theme="dark"] .btn-info:focus,
+[data-theme="dark"] .btn-success:hover,  [data-theme="dark"] .btn-success:focus,
+[data-theme="dark"] .btn-warning:hover,  [data-theme="dark"] .btn-warning:focus {
+  background-color: #333333;
+  border-color: #555555;
+  color: #ffffff;
 }
 
-[data-theme="dark"] .btn-default:active,
-[data-theme="dark"] .btn-default.active {
-  background-color: var(--aubooks-surface-hover);
-  border-color: var(--aubooks-border-strong);
-  color: var(--aubooks-text);
+[data-theme="dark"] .btn-default:active,  [data-theme="dark"] .btn-default.active,
+[data-theme="dark"] .btn-primary:active,  [data-theme="dark"] .btn-primary.active,
+[data-theme="dark"] .btn-info:active,     [data-theme="dark"] .btn-info.active,
+[data-theme="dark"] .btn-success:active,  [data-theme="dark"] .btn-success.active,
+[data-theme="dark"] .btn-warning:active,  [data-theme="dark"] .btn-warning.active {
+  background-color: #1a1a1a;
+  border-color: #333333;
+  color: #ffffff;
 }
 
-[data-theme="dark"] .btn-default[disabled],
-[data-theme="dark"] .btn-default.disabled {
-  background-color: var(--aubooks-surface-raised);
-  border-color: var(--aubooks-border);
-  color: var(--aubooks-text-subtle);
+[data-theme="dark"] .btn-default[disabled],  [data-theme="dark"] .btn-default.disabled,
+[data-theme="dark"] .btn-primary[disabled],  [data-theme="dark"] .btn-primary.disabled,
+[data-theme="dark"] .btn-info[disabled],     [data-theme="dark"] .btn-info.disabled,
+[data-theme="dark"] .btn-success[disabled],  [data-theme="dark"] .btn-success.disabled,
+[data-theme="dark"] .btn-warning[disabled],  [data-theme="dark"] .btn-warning.disabled {
+  background-color: #1a1a1a;
+  border-color: #333333;
+  color: #666666;
 }
 
 [data-theme="dark"] .open > .dropdown-toggle.btn-default {
-  background-color: var(--aubooks-surface-hover);
-  border-color: var(--aubooks-border-strong);
-  color: var(--aubooks-text);
-}
-
-[data-theme="dark"] .btn-primary {
-  background-color: var(--aubooks-accent);
-  border-color: var(--aubooks-accent);
-  color: var(--aubooks-on-accent);
-}
-
-[data-theme="dark"] .btn-primary:hover,
-[data-theme="dark"] .btn-primary:focus {
-  background-color: var(--aubooks-link);
-  border-color: var(--aubooks-link);
-  color: var(--aubooks-on-accent);
-}
-
-[data-theme="dark"] .btn-primary:active,
-[data-theme="dark"] .btn-primary.active {
-  background-color: var(--aubooks-link-hover);
-  border-color: var(--aubooks-link-hover);
-  color: var(--aubooks-on-accent);
-}
-
-[data-theme="dark"] .btn-primary[disabled],
-[data-theme="dark"] .btn-primary.disabled {
-  background-color: var(--aubooks-text-subtle);
-  border-color: var(--aubooks-text-subtle);
-  color: var(--aubooks-surface-raised);
-}
-
-[data-theme="dark"] .btn-success {
-  background-color: var(--aubooks-success);
-  border-color: var(--aubooks-success);
+  background-color: #333333;
+  border-color: #555555;
   color: #ffffff;
 }
 
-[data-theme="dark"] .btn-warning {
-  background-color: var(--aubooks-warning);
-  border-color: var(--aubooks-warning);
-  color: #000000;
-}
-
+/* Danger: dark red, distinguishable */
 [data-theme="dark"] .btn-danger {
-  background-color: var(--aubooks-danger);
-  border-color: var(--aubooks-danger);
+  background-color: #5c1a1a;
+  border-color: #7a2e2e;
+  color: #e0e0e0;
+}
+
+[data-theme="dark"] .btn-danger:hover, [data-theme="dark"] .btn-danger:focus {
+  background-color: #7a2e2e;
+  border-color: #994040;
   color: #ffffff;
 }
 
-[data-theme="dark"] .btn-info {
-  background-color: var(--aubooks-info);
-  border-color: var(--aubooks-info);
+[data-theme="dark"] .btn-danger:active, [data-theme="dark"] .btn-danger.active {
+  background-color: #4a1414;
+  border-color: #5c1a1a;
   color: #ffffff;
+}
+
+[data-theme="dark"] .btn-danger[disabled], [data-theme="dark"] .btn-danger.disabled {
+  background-color: #3a1010;
+  border-color: #5c1a1a;
+  color: #666666;
 }
 
 /* --- Dropdowns --- */
@@ -1140,40 +1214,40 @@ html[data-theme="dark"],
   background-color: #000000;
 }
 
-/* --- Pagination --- */
+/* --- Pagination (dark mode — same dark palette) --- */
 
 [data-theme="dark"] .pagination > li > a,
 [data-theme="dark"] .pagination > li > span {
-  background-color: var(--aubooks-surface);
-  border-color: var(--aubooks-border-strong);
-  color: var(--aubooks-link);
+  background-color: #222222;
+  border-color: #444444;
+  color: #e0e0e0;
 }
 
 [data-theme="dark"] .pagination > li > a:hover,
 [data-theme="dark"] .pagination > li > span:hover,
 [data-theme="dark"] .pagination > li > a:focus,
 [data-theme="dark"] .pagination > li > span:focus {
-  background-color: var(--aubooks-surface-hover);
-  border-color: var(--aubooks-border-strong);
-  color: var(--aubooks-link-hover);
+  background-color: #333333;
+  border-color: #555555;
+  color: #ffffff;
 }
 
 [data-theme="dark"] .pagination > .active > a,
 [data-theme="dark"] .pagination > .active > span,
 [data-theme="dark"] .pagination > .active > a:hover,
 [data-theme="dark"] .pagination > .active > span:hover {
-  background-color: var(--aubooks-accent);
-  border-color: var(--aubooks-accent);
-  color: var(--aubooks-on-accent);
+  background-color: #444444;
+  border-color: #555555;
+  color: #ffffff;
 }
 
 [data-theme="dark"] .pagination > .disabled > a,
 [data-theme="dark"] .pagination > .disabled > span,
 [data-theme="dark"] .pagination > .disabled > a:hover,
 [data-theme="dark"] .pagination > .disabled > span:hover {
-  background-color: var(--aubooks-surface-raised);
-  border-color: var(--aubooks-border);
-  color: var(--aubooks-text-subtle);
+  background-color: #1a1a1a;
+  border-color: #333333;
+  color: #666666;
 }
 
 /* --- Alerts --- */
