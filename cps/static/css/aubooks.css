@@ -261,8 +261,19 @@ a:hover {
 }
 
 .navigation .create-shelf a {
-  background-color: var(--aubooks-link);
-  color: var(--aubooks-on-accent);
+  background-color: #222222;
+  color: #e0e0e0;
+}
+
+.navigation .create-shelf a:hover,
+.navigation .create-shelf a:focus {
+  background-color: #333333;
+  color: #ffffff;
+}
+
+.navigation .create-shelf a:active {
+  background-color: #1a1a1a;
+  color: #ffffff;
 }
 
 .container-fluid .book .meta .author,
