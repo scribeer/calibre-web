@@ -456,6 +456,17 @@ a:hover {
   padding-top: 20px;
 }
 
+.aubooks-main .single .aubooks-detail-cover-column .cover {
+  width: 160px;
+  height: 240px;
+}
+
+.aubooks-main .single .aubooks-detail-cover-column .cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .aubooks-main .single .aubooks-detail-cover-column.cover-unavailable {
   display: none;
 }
@@ -778,7 +789,38 @@ a:hover {
 }
 
 /* ==========================================================================
-   24. Dark mode — Bootstrap component overrides
+   24. Dark buttons — unified dark look across all themes
+   ========================================================================== */
+
+.btn-default {
+  background-color: #222222;
+  border-color: #333333;
+  color: #e0e0e0;
+}
+
+.btn-default:hover,
+.btn-default:focus {
+  background-color: #333333;
+  border-color: #444444;
+  color: #ffffff;
+}
+
+.btn-default:active,
+.btn-default.active {
+  background-color: #1a1a1a;
+  border-color: #222222;
+  color: #ffffff;
+}
+
+.btn-default[disabled],
+.btn-default.disabled {
+  background-color: #1a1a1a;
+  border-color: #222222;
+  color: #777777;
+}
+
+/* ==========================================================================
+   25. Dark mode — Bootstrap component overrides
    ========================================================================== */
 
 [data-theme="dark"] body {
