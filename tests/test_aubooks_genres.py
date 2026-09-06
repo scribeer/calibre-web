@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from cps.aubooks_genres import (
     CATEGORY_SLUGS,
     CATEGORIES,
+    EXTRA_ALIASES,
     GENRES,
     UNKNOWN_CATEGORY,
     build_category_slug_map,
@@ -266,6 +267,72 @@ class AubooksParentCategoryTemplateTest(unittest.TestCase):
         tpl = Path("cps/themes/aubooks/templates/index.html").read_text()
         self.assertIn("web.category_by_slug", tpl)
         self.assertIn("aubooks_genre.category_slug", tpl)
+
+
+class AubooksCaseInsensitiveLookupTest(unittest.TestCase):
+
+    def test_detektiv_lowercase_is_mapped(self):
+        genre = genre_for_tag(tag(50, "детектив"))
+        self.assertEqual(genre["category"], "Детективы и триллеры")
+        self.assertTrue(genre["mapped"])
+
+    def test_detektivy_exact_still_works(self):
+        genre = genre_for_tag(tag(51, "Детективы"))
+        self.assertEqual(genre["category"], "Детективы и триллеры")
+        self.assertTrue(genre["mapped"])
+
+    def test_mixed_case_russian_label_resolves(self):
+        for name in ("ФЭНТЕЗИ", "фэнтези", "Фэнтези"):
+            with self.subTest(name=name):
+                genre = genre_for_tag(tag(60, name))
+                self.assertEqual(genre["category"], "Фантастика")
+                self.assertTrue(genre["mapped"])
+
+    def test_boevaya_fantastika_alias(self):
+        genre = genre_for_tag(tag(70, "Боевая фантастика"))
+        self.assertEqual(genre["category"], "Фантастика")
+        self.assertEqual(genre["label"], "Боевая фантастика и фэнтези")
+        self.assertTrue(genre["mapped"])
+
+    def test_geroicheskoe_fentezi_alias(self):
+        genre = genre_for_tag(tag(71, "Героическое фэнтези"))
+        self.assertEqual(genre["category"], "Фантастика")
+        self.assertTrue(genre["mapped"])
+
+    def test_lybovnoe_fentezi_alias(self):
+        genre = genre_for_tag(tag(72, "Любовное фэнтези"))
+        self.assertEqual(genre["category"], "Любовные романы")
+        self.assertTrue(genre["mapped"])
+
+    def test_litrrpg_alias(self):
+        genre = genre_for_tag(tag(73, "LitRPG"))
+        self.assertEqual(genre["category"], "Фантастика")
+        self.assertTrue(genre["mapped"])
+
+    def test_publicistika_lowercase_alias(self):
+        genre = genre_for_tag(tag(74, "публицистика"))
+        self.assertEqual(genre["category"], "Документальная литература")
+        self.assertTrue(genre["mapped"])
+
+    def test_proza_lowercase_alias(self):
+        genre = genre_for_tag(tag(75, "проза"))
+        self.assertEqual(genre["category"], "Проза")
+        self.assertTrue(genre["mapped"])
+
+    def test_unknown_random_tag_still_fallback(self):
+        genre = genre_for_tag(tag(99, "totally_unknown_xyz"))
+        self.assertEqual(genre["category"], UNKNOWN_CATEGORY)
+        self.assertFalse(genre["mapped"])
+
+    def test_extra_aliases_all_resolve_to_valid_genres(self):
+        for alias, code in EXTRA_ALIASES.items():
+            with self.subTest(alias=alias):
+                self.assertIn(code, GENRES, f"Code {code!r} not in GENRES")
+
+    def test_duplicate_label_economics_still_unknown(self):
+        genre = genre_for_tag(tag(10, "Экономика"))
+        self.assertEqual(genre["category"], UNKNOWN_CATEGORY)
+        self.assertFalse(genre["mapped"])
 
 
 if __name__ == "__main__":

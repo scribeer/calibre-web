@@ -94,7 +94,49 @@ for _genre in GENRES.values():
         _LABEL_GENRES[_label] = _genre
 for _label in _DUPLICATE_LABELS:
     del _LABEL_GENRES[_label]
-MAPPED_TAG_NAMES = tuple(GENRES) + tuple(_LABEL_GENRES)
+
+# ---------------------------------------------------------------------------
+# Case-insensitive label lookup
+# ---------------------------------------------------------------------------
+
+_LABEL_GENRES_NORMALIZED = {}
+for _label, _genre in _LABEL_GENRES.items():
+    _norm = _label.strip().casefold()
+    if _norm not in _LABEL_GENRES_NORMALIZED:
+        _LABEL_GENRES_NORMALIZED[_norm] = _genre
+
+# ---------------------------------------------------------------------------
+# Explicit aliases: raw tag name → GENRES entry
+# Only unambiguous mappings where the alias clearly refers to an existing
+# genre.  Entries that could not be resolved to a single GENRES entry are
+# intentionally omitted and listed in the docs report.
+# ---------------------------------------------------------------------------
+
+EXTRA_ALIASES = {
+    "детектив": "detective",
+    "Любовный роман": "love",
+    "Боевая фантастика": "sf_action",
+    "Героическое фэнтези": "sf_heroic",
+    "Любовное фэнтези": "love_sf",
+    "LitRPG": "sf_litrpg",
+    "Эзотерика": "religion_esoterics",
+    "публицистика": "nonf_publicism",
+    "проза": "prose",
+    "foreign_fantasy": "foreign_sf",
+    "city_fantasy": "sf_fantasy_city",
+    "fantasy_action": "sf_action",
+    "russian_contemporary": "prose_contemporary",
+    "foreign_contemporary": "foreign_prose",
+    "psy_personal": "sci_psychology_popular",
+    "popadanec": "popadancy",
+}
+
+_ALIAS_GENRES = {}
+for _alias, _code in EXTRA_ALIASES.items():
+    if _code in GENRES:
+        _ALIAS_GENRES[_alias] = GENRES[_code]
+
+MAPPED_TAG_NAMES = tuple(GENRES) + tuple(_LABEL_GENRES) + tuple(_LABEL_GENRES_NORMALIZED) + tuple(_ALIAS_GENRES)
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +193,18 @@ def _public_unknown_label(name):
 def genre_for_tag(tag):
     """Return an AU presentation dict while preserving the original tag ID."""
     name = (tag.name or "").strip()
-    genre = GENRES.get(name) or _LABEL_GENRES.get(name)
+    # 1. Exact match by Flibusta code
+    genre = GENRES.get(name)
+    # 2. Exact match by unique Russian label
+    if not genre:
+        genre = _LABEL_GENRES.get(name)
+    # 3. Case-insensitive match by Russian label
+    if not genre:
+        norm = name.casefold()
+        genre = _LABEL_GENRES_NORMALIZED.get(norm)
+    # 4. Explicit alias lookup
+    if not genre:
+        genre = _ALIAS_GENRES.get(name)
     if genre:
         result = dict(genre)
     else:
