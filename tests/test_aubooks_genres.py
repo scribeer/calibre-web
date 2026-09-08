@@ -452,6 +452,121 @@ class AubooksCaseInsensitiveLookupTest(unittest.TestCase):
         self.assertEqual(genre["category"], "Психология и здоровье")
         self.assertTrue(genre["mapped"])
 
+    # Wave 4 — psychology/health cleanup: moved codes
+
+    def test_religion_self_to_psychology_health(self):
+        genre = genre_for_tag(tag(400, "religion_self"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_family_to_psychology_health(self):
+        genre = genre_for_tag(tag(401, "family"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_home_sex_to_psychology_health(self):
+        genre = genre_for_tag(tag(402, "home_sex"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_sf_social_stays_in_fantasy(self):
+        genre = genre_for_tag(tag(403, "sf_social"))
+        self.assertEqual(genre["category"], "Фантастика")
+        self.assertTrue(genre["mapped"])
+
+    # Wave 4 — psychology/health cleanup: new aliases → sci_psychology
+
+    def test_psyhoterapiya_konsultirovanie_alias(self):
+        genre = genre_for_tag(tag(410, "Психотерапия и консультирование"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_obshchaya_psihologiya_alias(self):
+        genre = genre_for_tag(tag(411, "Общая психология"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_zarubezhnaya_psihologiya_alias(self):
+        genre = genre_for_tag(tag(412, "Зарубежная психология"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_sotsialnaya_psihologiya_alias(self):
+        genre = genre_for_tag(tag(413, "Социальная психология"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_psihologiya_i_zdorove_self_alias(self):
+        genre = genre_for_tag(tag(414, "Психология и здоровье"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_klassiki_psihologii_alias(self):
+        genre = genre_for_tag(tag(415, "Классики психологии"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_vozrastnaya_psihologiya_alias(self):
+        genre = genre_for_tag(tag(416, "Возрастная психология"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_seks_i_semejnaya_psihologiya_alias(self):
+        genre = genre_for_tag(tag(417, "Секс и семейная психология"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    # Wave 4 — psychology/health cleanup: new aliases → sci_psychology_popular
+
+    def test_biznes_i_psihologiya_alias(self):
+        genre = genre_for_tag(tag(420, "Бизнес и психология"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_psihologiya_biznesa_alias(self):
+        genre = genre_for_tag(tag(421, "Психология бизнеса"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_prakticheskaya_psihologiya_alias(self):
+        genre = genre_for_tag(tag(422, "Практическая психология"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_domashnyaya_psihologiya_alias(self):
+        genre = genre_for_tag(tag(423, "Домашняя психология"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    # Wave 4 — psychology/health cleanup: new aliases → sci_medicine
+
+    def test_medicinskaya_literatura_alias(self):
+        genre = genre_for_tag(tag(430, "Медицинская литература"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_zdorove_i_medicina_alias(self):
+        genre = genre_for_tag(tag(431, "Здоровье и медицина"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    # Wave 4 — psychology/health cleanup: new aliases → home_health
+
+    def test_zdorove_i_lichnostnyj_rost_alias(self):
+        genre = genre_for_tag(tag(432, "Здоровье и личностный рост"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_zdorove_i_kulinariya_alias(self):
+        genre = genre_for_tag(tag(433, "Здоровье и кулинария"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_zdorove_i_sport_alias(self):
+        genre = genre_for_tag(tag(434, "Здоровье и спорт"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
 
 if __name__ == "__main__":
     unittest.main()

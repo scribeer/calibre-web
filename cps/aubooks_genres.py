@@ -103,6 +103,9 @@ _PSYCHOLOGY_HEALTH_CODES = {
     "sci_psychology",     # Психология и психотерапия (was Наука и образование)
     "sci_medicine",       # Медицина (was Наука и образование)
     "sci_medicine_alternative",  # Альтернативная медицина (was Наука и образование)
+    "religion_self",      # Самосовершенствование (was Религия и духовность)
+    "family",             # Семейные отношения (was Дом и семья)
+    "home_sex",           # Семейные отношения, секс (was Дом и семья)
 }
 
 _NEW_CATEGORY = "Психология и здоровье"
@@ -212,6 +215,24 @@ EXTRA_ALIASES = {
     "Детская психология": "sci_psychology",
     "Медицина": "sci_medicine",
     "Здоровье": "home_health",
+    # Wave 4 — psychology/health cleanup aliases
+    "Психотерапия и консультирование": "sci_psychology",
+    "Общая психология": "sci_psychology",
+    "Зарубежная психология": "sci_psychology",
+    "Социальная психология": "sci_psychology",
+    "Психология и здоровье": "sci_psychology",
+    "Классики психологии": "sci_psychology",
+    "Возрастная психология": "sci_psychology",
+    "Секс и семейная психология": "sci_psychology",
+    "Бизнес и психология": "sci_psychology_popular",
+    "Психология бизнеса": "sci_psychology_popular",
+    "Практическая психология": "sci_psychology_popular",
+    "Домашняя психология": "sci_psychology_popular",
+    "Медицинская литература": "sci_medicine",
+    "Здоровье и медицина": "sci_medicine",
+    "Здоровье и личностный рост": "home_health",
+    "Здоровье и кулинария": "home_health",
+    "Здоровье и спорт": "home_health",
 }
 
 _ALIAS_GENRES = {}
