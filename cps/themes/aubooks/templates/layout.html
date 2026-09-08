@@ -140,7 +140,6 @@
         <aside class="col-sm-2 aubooks-sidebar" aria-label="{{_('Library navigation')}}">
           <nav class="navigation" aria-label="{{_('Browse')}}">
             <ul class="list-unstyled" id="scnd-nav" intent in-standard-append="nav.navigation" in-mobile-after="#main-nav" in-mobile-class="nav navbar-nav">
-              <li class="nav-head hidden-xs">{{_('Browse')}}</li>
               {% for element in sidebar %}
                 {% if element['id'] == 'cat' and aubooks_sidebar_genre_tree %}
                   <li class="nav-head aubooks-sidebar-genres-heading">Категории</li>
