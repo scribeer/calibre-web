@@ -143,9 +143,7 @@
               {% for element in sidebar %}
                 {% if element['id'] == 'cat' and aubooks_sidebar_genre_tree %}
                   <li class="nav-head aubooks-sidebar-genres-heading">Категории</li>
-                  {% if current_user.check_visibility(element['visibility']) %}
                   <li id="nav_cat"{% if page == 'catlist' %} class="active"{% endif %}><a href="{{url_for('web.category_list')}}"{% if page == 'catlist' %} aria-current="page"{% endif %}>Все категории</a></li>
-                  {% endif %}
                   <li class="aubooks-sidebar-genres">
                     <ul>
                       {% for group in aubooks_sidebar_genre_tree %}
