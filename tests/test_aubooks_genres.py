@@ -58,9 +58,9 @@ class AubooksGenresTest(unittest.TestCase):
         self.assertFalse(genre["mapped"])
 
     def test_unknown_russian_tag_keeps_readable_label(self):
-        genre = genre_for_tag(tag(8, "Современная проза"))
+        genre = genre_for_tag(tag(8, "Легкая эротика"))
         self.assertEqual(genre["category"], UNKNOWN_CATEGORY)
-        self.assertEqual(genre["label"], "Современная проза")
+        self.assertEqual(genre["label"], "Легкая эротика")
 
     def test_exact_unique_russian_label_uses_dictionary_category(self):
         genre = genre_for_tag(tag(9, "Фэнтези"))
@@ -333,6 +333,60 @@ class AubooksCaseInsensitiveLookupTest(unittest.TestCase):
         genre = genre_for_tag(tag(10, "Экономика"))
         self.assertEqual(genre["category"], UNKNOWN_CATEGORY)
         self.assertFalse(genre["mapped"])
+
+    # Wave 2 — editorial aliases
+
+    def test_sovremennaya_proza_alias(self):
+        genre = genre_for_tag(tag(200, "Современная проза"))
+        self.assertEqual(genre["category"], "Проза")
+        self.assertTrue(genre["mapped"])
+
+    def test_psihologiya_alias(self):
+        genre = genre_for_tag(tag(201, "психология"))
+        self.assertEqual(genre["category"], "Наука и образование")
+        self.assertTrue(genre["mapped"])
+
+    def test_voennaya_proza_alias(self):
+        genre = genre_for_tag(tag(202, "Военная проза"))
+        self.assertEqual(genre["category"], "Проза")
+        self.assertTrue(genre["mapped"])
+
+    def test_biografiya_alias(self):
+        genre = genre_for_tag(tag(203, "Биография"))
+        self.assertEqual(genre["category"], "Документальная литература")
+        self.assertTrue(genre["mapped"])
+
+    def test_nauka_alias(self):
+        genre = genre_for_tag(tag(204, "Наука"))
+        self.assertEqual(genre["category"], "Наука и образование")
+        self.assertTrue(genre["mapped"])
+
+    def test_nauchno_populyarnoe_alias(self):
+        genre = genre_for_tag(tag(205, "Научно-популярное"))
+        self.assertEqual(genre["category"], "Наука и образование")
+        self.assertTrue(genre["mapped"])
+
+    # Wave 2 — high-confidence aliases
+
+    def test_misticheskoe_fentezi_alias(self):
+        genre = genre_for_tag(tag(206, "Мистическое фэнтези"))
+        self.assertEqual(genre["category"], "Фантастика")
+        self.assertTrue(genre["mapped"])
+
+    def test_foreign_detective_alias(self):
+        genre = genre_for_tag(tag(207, "foreign_detective"))
+        self.assertEqual(genre["category"], "Детективы и триллеры")
+        self.assertTrue(genre["mapped"])
+
+    def test_detskaya_literatura_alias(self):
+        genre = genre_for_tag(tag(208, "Детская литература"))
+        self.assertEqual(genre["category"], "Детская литература")
+        self.assertTrue(genre["mapped"])
+
+    def test_fantasy_alias(self):
+        genre = genre_for_tag(tag(209, "fantasy"))
+        self.assertEqual(genre["category"], "Фантастика")
+        self.assertTrue(genre["mapped"])
 
 
 if __name__ == "__main__":

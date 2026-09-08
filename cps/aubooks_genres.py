@@ -113,6 +113,7 @@ for _label, _genre in _LABEL_GENRES.items():
 # ---------------------------------------------------------------------------
 
 EXTRA_ALIASES = {
+    # Wave 1 — original aliases
     "детектив": "detective",
     "Любовный роман": "love",
     "Боевая фантастика": "sf_action",
@@ -129,6 +130,38 @@ EXTRA_ALIASES = {
     "foreign_contemporary": "foreign_prose",
     "psy_personal": "sci_psychology_popular",
     "popadanec": "popadancy",
+    # Wave 2 — high-confidence obvious wins (24 tags, 5170 books)
+    "Мистическое фэнтези": "sf_mystic",
+    "Социальная фантастика": "sf_social",
+    "Юмористическая фантастика": "sf_humor",
+    "love_fantasy": "love_sf",
+    "fantasy_fight": "sf_action",
+    "Боевое фэнтези": "sf_action",
+    "Биографии и Мемуары": "nonf_biography",
+    "psy_theraphy": "sci_psychology",
+    "foreign_love": "love",
+    "foreign_detective": "det_classic",
+    "Детская литература": "children",
+    "Советская проза": "prose_su_classics",
+    "visual_arts": "design",
+    "foreign_psychology": "sci_psychology",
+    "Любовные истории": "love",
+    "Детская фантастика": "child_sf",
+    "Сказки": "child_tale",
+    "Детская проза": "child_prose",
+    "Попаданец в фэнтези": "popadancy",
+    "humor_fantasy": "sf_humor",
+    "Биология": "sci_biology",
+    "fantasy": "sf_etc",
+    "Путешествия и приключения": "adv_geo",
+    "Мистический триллер": "thriller",
+    # Wave 2 — editorial decisions (6 tags, 8783 books)
+    "Современная проза": "prose_contemporary",
+    "психология": "sci_psychology",
+    "Военная проза": "prose_military",
+    "Биография": "nonf_biography",
+    "Наука": "sci_popular",
+    "Научно-популярное": "sci_popular",
 }
 
 _ALIAS_GENRES = {}
