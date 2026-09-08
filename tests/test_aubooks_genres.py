@@ -568,5 +568,100 @@ class AubooksCaseInsensitiveLookupTest(unittest.TestCase):
         self.assertTrue(genre["mapped"])
 
 
+class AubooksGenreTreeDedupTest(unittest.TestCase):
+    """Tests for build_genre_tree deduplication by genre code."""
+
+    def test_sf_action_five_tags_merge_to_one(self):
+        """sf_action / Боевая фантастика и фэнтези — 5 tags → 1 entry."""
+        entries = [
+            (tag(2469, "sf_action"), 3798),
+            (tag(228, "Боевая фантастика"), 5049),
+            (tag(2858, "fantasy_action"), 267),
+            (tag(2522, "fantasy_fight"), 233),
+            (tag(217, "Боевое фэнтези"), 204),
+        ]
+        tree = build_genre_tree(entries)
+        fantasy = next(g for g in tree if g["category"] == "Фантастика")
+        sf_action = [g for g in fantasy["genres"] if g["code"] == "sf_action"]
+        self.assertEqual(len(sf_action), 1)
+        genre = sf_action[0]
+        self.assertEqual(genre["label"], "Боевая фантастика и фэнтези")
+        self.assertEqual(sorted(genre["tag_ids"]), [217, 228, 2469, 2522, 2858])
+        self.assertEqual(genre["count"], 9551)
+
+    def test_single_tag_genre_unchanged(self):
+        """Genre with one tag produces one entry with tag_ids=[id]."""
+        entries = [(tag(100, "det_classic"), 500)]
+        tree = build_genre_tree(entries)
+        det = next(g for g in tree if g["category"] == "Детективы и триллеры")
+        self.assertEqual(len(det["genres"]), 1)
+        self.assertEqual(det["genres"][0]["tag_ids"], [100])
+        self.assertEqual(det["genres"][0]["count"], 500)
+
+    def test_count_is_sum_not_unique(self):
+        """Count for merged genre is sum of individual tag counts."""
+        entries = [
+            (tag(1, "sf_action"), 100),
+            (tag(2, "Боевая фантастика"), 200),
+        ]
+        tree = build_genre_tree(entries)
+        fantasy = next(g for g in tree if g["category"] == "Фантастика")
+        self.assertEqual(fantasy["genres"][0]["count"], 300)
+
+    def test_no_duplicate_labels_in_tree(self):
+        """No genre code appears twice in the tree."""
+        entries = [
+            (tag(1, "sf_action"), 100),
+            (tag(2, "Боевая фантастика"), 200),
+            (tag(3, "det_classic"), 50),
+            (tag(4, "Классический детектив"), 30),
+        ]
+        tree = build_genre_tree(entries)
+        all_codes = []
+        for group in tree:
+            for genre in group["genres"]:
+                all_codes.append(genre["code"])
+        self.assertEqual(len(all_codes), len(set(all_codes)),
+                         f"Duplicate codes: {[c for c in all_codes if all_codes.count(c) > 1]}")
+
+    def test_unknown_tags_still_appear(self):
+        """Unknown tags still get their own entry in Другие жанры."""
+        entries = [
+            (tag(1, "sf_action"), 100),
+            (tag(99, "totally_unknown"), 5),
+        ]
+        tree = build_genre_tree(entries)
+        unknown = next(g for g in tree if g["category"] == "Другие жанры")
+        self.assertEqual(len(unknown["genres"]), 1)
+        self.assertEqual(unknown["genres"][0]["tag_ids"], [99])
+
+    def test_sidebar_tree_still_works(self):
+        """Sidebar tree deduplication still works after refactor."""
+        tags = [
+            tag(100, "det_action"),
+            tag(200, "Боевик"),
+            tag(101, "det_irony"),
+            tag(201, "Иронический детектив"),
+        ]
+        tree = build_sidebar_genre_tree(tags)
+        det = next(g for g in tree if g["category"] == "Детективы и триллеры")
+        self.assertEqual(len(det["genres"]), 2)
+        boevik = next(g for g in det["genres"] if g["label"] == "Боевик")
+        self.assertEqual(sorted(boevik["tag_ids"]), [100, 200])
+
+    def test_genre_tree_has_tag_ids_for_template(self):
+        """Every genre in tree has tag_ids list (required by template)."""
+        entries = [
+            (tag(1, "sf_action"), 100),
+            (tag(2, "det_classic"), 50),
+        ]
+        tree = build_genre_tree(entries)
+        for group in tree:
+            for genre in group["genres"]:
+                self.assertIn("tag_ids", genre)
+                self.assertIsInstance(genre["tag_ids"], list)
+                self.assertGreater(len(genre["tag_ids"]), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

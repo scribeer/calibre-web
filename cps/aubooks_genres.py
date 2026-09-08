@@ -352,20 +352,53 @@ def group_tags(tags):
     return result
 
 
+def _merge_genres_by_code(grouped):
+    """Deduplicate genre entries within each category by merging by genre code.
+
+    For each category in *grouped*, entries sharing the same ``code`` are
+    collapsed into a single entry.  ``tag_ids`` lists are merged, and
+    ``count`` values (when present) are summed.  The resulting list is
+    sorted by label.
+    """
+    for category in grouped:
+        merged = OrderedDict()
+        for genre in grouped[category]:
+            code = genre["code"]
+            if code in merged:
+                existing = merged[code]
+                existing["tag_ids"].extend(genre["tag_ids"])
+                if "count" in genre:
+                    existing["count"] = existing.get("count", 0) + genre["count"]
+            else:
+                merged[code] = genre
+        grouped[category] = sorted(merged.values(),
+                                   key=lambda item: item["label"].casefold())
+
+
 def build_genre_tree(entries):
-    """Build a hierarchy from the existing aggregate tag/count query results."""
+    """Build a hierarchy from the existing aggregate tag/count query results.
+
+    Each raw Calibre tag is classified via ``genre_for_tag`` and grouped by
+    category.  Tags that resolve to the same genre code are merged into a
+    single entry with a ``tag_ids`` list and a ``count`` equal to the sum of
+    individual tag counts (approximation — a book carrying two tags of the
+    same code will be counted twice, which is acceptable for the directory
+    listing where the precise count is less critical than correct merging).
+    """
     grouped = OrderedDict((category, []) for category in CATEGORIES)
     grouped[UNKNOWN_CATEGORY] = []
     for tag, count in entries:
         genre = genre_for_tag(tag)
         genre["count"] = count
+        genre["tag_ids"] = [genre["tag_id"]]
         grouped[genre["category"]].append(genre)
+
+    _merge_genres_by_code(grouped)
 
     tree = []
     for category, genres in grouped.items():
         if not genres:
             continue
-        genres.sort(key=lambda item: item["label"].casefold())
         tree.append({"category": category, "genres": genres})
     return tree
 
@@ -380,32 +413,20 @@ def build_sidebar_genre_tree(tags):
     resulting compound URL shows books from *every* matching tag.
     """
     grouped = OrderedDict((category, []) for category in CATEGORIES)
-    seen_codes = set()
     for tag in tags:
         genre = genre_for_tag(tag)
         if not genre["mapped"]:
             continue
-        code = genre["code"]
-        if code in seen_codes:
-            for existing_genre in grouped[genre["category"]]:
-                if existing_genre["code"] == code:
-                    existing_genre["tag_ids"].append(genre["tag_id"])
-                    break
-            continue
-        seen_codes.add(code)
         genre["tag_ids"] = [genre["tag_id"]]
         grouped[genre["category"]].append(genre)
 
+    _merge_genres_by_code(grouped)
+
     tree = []
     for category, genres in grouped.items():
-        genres.sort(key=lambda item: item["label"].casefold())
         category_tag_ids = []
-        seen_codes = set()
         for genre in genres:
-            code = genre["code"]
-            if code not in seen_codes:
-                seen_codes.add(code)
-                category_tag_ids.extend(genre["tag_ids"])
+            category_tag_ids.extend(genre["tag_ids"])
         tree.append({"category": category, "genres": genres,
                       "category_tag_ids": category_tag_ids,
                       "category_slug": _slugify(category)})

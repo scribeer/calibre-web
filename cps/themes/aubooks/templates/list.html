@@ -15,7 +15,7 @@
     <ul>
       {% for genre in group.genres %}
       <li>
-        <a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=genre.tag_id)}}">{{genre.label}}</a>
+        <a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=genre.tag_ids|join('+'))}}">{{genre.label}}</a>
         <span class="badge" aria-label="{{_('Books')}}: {{genre.count}}">{{genre.count}}</span>
       </li>
       {% endfor %}
