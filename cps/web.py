@@ -1197,7 +1197,7 @@ def language_overview():
 @web.route("/category")
 @login_required_if_no_ano
 def category_list():
-    if current_user.check_visibility(constants.SIDEBAR_CATEGORY):
+    if current_user.is_anonymous or current_user.check_visibility(constants.SIDEBAR_CATEGORY):
         if current_user.get_view_property('category', 'dir') == 'desc':
             order = db.Tags.name.desc()
             order_no = 0
