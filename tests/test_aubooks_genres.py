@@ -861,5 +861,75 @@ class AubooksWave6AliasesTest(unittest.TestCase):
         self.assertFalse(genre["mapped"])
 
 
+class AubooksWave7AliasesTest(unittest.TestCase):
+    """Tests for wave 7 aliases (final wave, 2026-09-08)."""
+
+    def test_zarubezhnaya_publicistika_to_nonf_publicism(self):
+        genre = genre_for_tag(tag(700, "Зарубежная публицистика"))
+        self.assertEqual(genre["code"], "nonf_publicism")
+        self.assertEqual(genre["category"], "Документальная литература")
+        self.assertTrue(genre["mapped"])
+
+    def test_adv_western_to_adv_indian(self):
+        genre = genre_for_tag(tag(701, "adv_western"))
+        self.assertEqual(genre["code"], "adv_indian")
+        self.assertEqual(genre["category"], "Приключения")
+        self.assertTrue(genre["mapped"])
+
+    def test_fantasy_heroic_to_sf_heroic(self):
+        genre = genre_for_tag(tag(702, "fantasy_heroic"))
+        self.assertEqual(genre["code"], "sf_heroic")
+        self.assertEqual(genre["category"], "Фантастика")
+        self.assertTrue(genre["mapped"])
+
+    def test_zakordonna_klasika_to_foreign_prose(self):
+        genre = genre_for_tag(tag(703, "закордонна класика"))
+        self.assertEqual(genre["code"], "foreign_prose")
+        self.assertEqual(genre["category"], "Проза")
+        self.assertTrue(genre["mapped"])
+
+    def test_fantasy_epic_to_sf_epic(self):
+        genre = genre_for_tag(tag(704, "fantasy_epic"))
+        self.assertEqual(genre["code"], "sf_epic")
+        self.assertEqual(genre["category"], "Фантастика")
+        self.assertTrue(genre["mapped"])
+
+    def test_lichnie_finansy_to_banking(self):
+        genre = genre_for_tag(tag(705, "Личные финансы"))
+        self.assertEqual(genre["code"], "banking")
+        self.assertEqual(genre["category"], "Деловая литература")
+        self.assertTrue(genre["mapped"])
+
+    def test_detskie_knigi_to_children(self):
+        genre = genre_for_tag(tag(706, "Детские книги"))
+        self.assertEqual(genre["code"], "children")
+        self.assertEqual(genre["category"], "Детская литература")
+        self.assertTrue(genre["mapped"])
+
+    def test_zarubezhnye_lyubovnye_to_love(self):
+        genre = genre_for_tag(tag(707, "Зарубежные любовные романы"))
+        self.assertEqual(genre["code"], "love")
+        self.assertEqual(genre["category"], "Романтика")
+        self.assertTrue(genre["mapped"])
+
+    def test_comp_soft_to_computers(self):
+        genre = genre_for_tag(tag(708, "comp_soft"))
+        self.assertEqual(genre["code"], "computers")
+        self.assertEqual(genre["category"], "Компьютеры и интернет")
+        self.assertTrue(genre["mapped"])
+
+    def test_foreign_adventure_to_adventure(self):
+        genre = genre_for_tag(tag(709, "foreign_adventure"))
+        self.assertEqual(genre["code"], "adventure")
+        self.assertEqual(genre["category"], "Приключения")
+        self.assertTrue(genre["mapped"])
+
+    def test_prochaya_obrazovatel_to_sci_popular(self):
+        genre = genre_for_tag(tag(710, "Прочая образовательная литература"))
+        self.assertEqual(genre["code"], "sci_popular")
+        self.assertEqual(genre["category"], "Наука и образование")
+        self.assertTrue(genre["mapped"])
+
+
 if __name__ == "__main__":
     unittest.main()

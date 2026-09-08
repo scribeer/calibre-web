@@ -415,6 +415,20 @@ EXTRA_ALIASES = {
     "анатомія": "sci_medicine",
     # Смешанные
     "Маркетинг и реклама": "org_behavior",
+    # Wave 7 — final wave: large unmapped tags (2026-09-08)
+    # OBVIOUS_ALIAS
+    "Зарубежная публицистика": "nonf_publicism",
+    "adv_western": "adv_indian",
+    "fantasy_heroic": "sf_heroic",
+    "закордонна класика": "foreign_prose",
+    "fantasy_epic": "sf_epic",
+    "Личные финансы": "banking",
+    # Editorial decisions
+    "Детские книги": "children",
+    "Зарубежные любовные романы": "love",
+    "comp_soft": "computers",
+    "foreign_adventure": "adventure",
+    "Прочая образовательная литература": "sci_popular",
 }
 
 _ALIAS_GENRES = {}
