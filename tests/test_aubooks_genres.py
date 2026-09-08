@@ -757,5 +757,109 @@ class AubooksWave5AliasesTest(unittest.TestCase):
         self.assertEqual(genre["category"], "Другие жанры")
 
 
+class AubooksWave6AliasesTest(unittest.TestCase):
+    """Tests for wave 6 aliases (2026-09-08)."""
+
+    def test_management_to_org_behavior(self):
+        genre = genre_for_tag(tag(600, "management"))
+        self.assertEqual(genre["code"], "org_behavior")
+        self.assertEqual(genre["category"], "Деловая литература")
+        self.assertTrue(genre["mapped"])
+
+    def test_ya_to_children(self):
+        genre = genre_for_tag(tag(601, "ya"))
+        self.assertEqual(genre["code"], "children")
+        self.assertEqual(genre["category"], "Детская литература")
+        self.assertTrue(genre["mapped"])
+
+    def test_popadantsy_variant_to_popadancy(self):
+        genre = genre_for_tag(tag(602, "popadantsy-v-magicheskie-miry"))
+        self.assertEqual(genre["code"], "popadancy")
+        self.assertEqual(genre["category"], "Фантастика")
+        self.assertTrue(genre["mapped"])
+
+    def test_realrpg_to_sf_litrpg(self):
+        genre = genre_for_tag(tag(603, "RealRPG"))
+        self.assertEqual(genre["code"], "sf_litrpg")
+        self.assertTrue(genre["mapped"])
+
+    def test_psy_childs_to_psychology_popular(self):
+        genre = genre_for_tag(tag(604, "psy_childs"))
+        self.assertEqual(genre["code"], "sci_psychology_popular")
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_back_to_ussr_to_popadancy(self):
+        genre = genre_for_tag(tag(605, "back_to_ussr"))
+        self.assertEqual(genre["code"], "popadancy")
+        self.assertEqual(genre["category"], "Фантастика")
+        self.assertTrue(genre["mapped"])
+
+    def test_lyubovi_i_erotika_to_love_erotica(self):
+        genre = genre_for_tag(tag(606, "Любови и эротика"))
+        self.assertEqual(genre["code"], "love_erotica")
+        self.assertTrue(genre["mapped"])
+
+    def test_sci_fi_to_sf_etc(self):
+        genre = genre_for_tag(tag(607, "sci-fi"))
+        self.assertEqual(genre["code"], "sf_etc")
+        self.assertTrue(genre["mapped"])
+
+    def test_romantika_to_love(self):
+        genre = genre_for_tag(tag(608, "Романтика"))
+        self.assertEqual(genre["code"], "love")
+        self.assertEqual(genre["category"], "Романтика")
+        self.assertTrue(genre["mapped"])
+
+    def test_rasskaz_to_prose(self):
+        genre = genre_for_tag(tag(609, "Рассказ"))
+        self.assertEqual(genre["code"], "prose")
+        self.assertTrue(genre["mapped"])
+
+    def test_foreign_detective_to_detective(self):
+        genre = genre_for_tag(tag(610, "Зарубежные детективы"))
+        self.assertEqual(genre["code"], "detective")
+        self.assertEqual(genre["category"], "Детективы и триллеры")
+        self.assertTrue(genre["mapped"])
+
+    def test_child_tale_tag(self):
+        genre = genre_for_tag(tag(611, "Детские сказки"))
+        self.assertEqual(genre["code"], "child_tale")
+        self.assertEqual(genre["category"], "Детская литература")
+        self.assertTrue(genre["mapped"])
+
+    def test_marketing_i_reklama_to_org_behavior(self):
+        genre = genre_for_tag(tag(612, "Маркетинг и реклама"))
+        self.assertEqual(genre["code"], "org_behavior")
+        self.assertTrue(genre["mapped"])
+
+    def test_lichnostnyj_rost_to_psychology(self):
+        genre = genre_for_tag(tag(613, "Личностный рост и самосовершенствование"))
+        self.assertEqual(genre["code"], "sci_psychology_popular")
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_anatomiya_to_sci_medicine(self):
+        genre = genre_for_tag(tag(614, "анатомія"))
+        self.assertEqual(genre["code"], "sci_medicine")
+        self.assertTrue(genre["mapped"])
+
+    def test_ekshn_remains_unmapped(self):
+        genre = genre_for_tag(tag(615, "Экшн (action)"))
+        self.assertFalse(genre["mapped"])
+
+    def test_foreign_edu_remains_unmapped(self):
+        genre = genre_for_tag(tag(616, "Зарубежная образовательная литература"))
+        self.assertFalse(genre["mapped"])
+
+    def test_neokoncheno_remains_unmapped(self):
+        genre = genre_for_tag(tag(617, "Неокончено"))
+        self.assertFalse(genre["mapped"])
+
+    def test_compilation_remains_unmapped(self):
+        genre = genre_for_tag(tag(618, "compilation"))
+        self.assertFalse(genre["mapped"])
+
+
 if __name__ == "__main__":
     unittest.main()

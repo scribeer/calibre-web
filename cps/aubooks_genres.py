@@ -350,6 +350,71 @@ EXTRA_ALIASES = {
     # Компьютеры и интернет
     "Компьютерная литература": "comp_db",
     "Программирование": "comp_db",
+    # Wave 6 — 49 aliases from post-wave-5 audit (2026-09-08)
+    # Фантастика
+    "Эпическое фэнтези": "sf_epic",
+    "sf-history": "sf_history",
+    "fantasy-action": "sf_action",
+    "sf-action": "sf_action",
+    "RealRPG": "sf_litrpg",
+    "popadantsy_v_magicheskie_miry": "popadancy",
+    "popadantsy-v-magicheskie-miry": "popadancy",
+    "popadantsy": "popadancy",
+    "popadantsy_vo_vremeni": "popadancy",
+    "popadantsy-vo-vremeni": "popadancy",
+    "dragon_fantasy": "sf_fantasy",
+    "Мифические существа": "sf_fantasy",
+    "Городское фентези": "sf_fantasy_city",
+    "Иностранное фентези": "foreign_sf",
+    "urban-fantasy": "sf_fantasy_city",
+    "love-fantasy": "love_sf",
+    "sci-fi": "sf_etc",
+    "back_to_ussr": "popadancy",
+    # Деловая литература
+    "management": "org_behavior",
+    "marketing": "org_behavior",
+    "Зарубежная деловая литература": "economics_ref",
+    "personal_finance": "banking",
+    # Детская литература
+    "ya": "children",
+    "Воспитание детей": "child_education",
+    "Для детей": "children",
+    "upbringing_book": "child_education",
+    "Детские приключения": "child_adv",
+    "Детские сказки": "child_tale",
+    # Проза
+    "essay": "prose",
+    "short_story": "prose",
+    "Беллетристика": "prose",
+    "Русская класическая проза": "prose_rus_classic",
+    "Рассказ": "prose",
+    # Наука и образование
+    "Лингвистика": "sci_linguistic",
+    "foreign_language": "sci_linguistic",
+    "Техника": "sci_tech",
+    "Исторические эпохи": "sci_history",
+    "Иностранная философия": "sci_philosophy",
+    # Психология и здоровье
+    "psy_childs": "sci_psychology_popular",
+    "Личностный рост и самосовершенствование": "sci_psychology_popular",
+    # Документальная литература
+    "Военная публицистика": "nonf_publicism",
+    # Детективы
+    "Зарубежные детективы": "detective",
+    # Романтика
+    "Исторический любовный роман": "love_history",
+    "Эротика": "love_erotica",
+    "О любви": "love",
+    "Любови и эротика": "love_erotica",
+    "Романтика": "love",
+    # Дом и семья
+    "Поделки": "home_crafts",
+    # Компьютеры
+    "comp_programming": "comp_db",
+    # Медицина
+    "анатомія": "sci_medicine",
+    # Смешанные
+    "Маркетинг и реклама": "org_behavior",
 }
 
 _ALIAS_GENRES = {}
