@@ -23,7 +23,7 @@ def tag(tag_id, name):
 class AubooksGenresTest(unittest.TestCase):
     def test_source_size_and_categories(self):
         self.assertEqual(len(GENRES), 272)
-        self.assertEqual(len(CATEGORIES), 21)
+        self.assertEqual(len(CATEGORIES), 22)
 
     def test_flbusta_labels_and_categories(self):
         expected = {
@@ -31,7 +31,7 @@ class AubooksGenresTest(unittest.TestCase):
             "det_classic": ("Классический детектив", "Детективы и триллеры"),
             "child_sf_space": ("Детская фантастика: космические приключения, пришельцы", "Детская литература"),
             "nonf_biography": ("Биографии и мемуары: прочее", "Документальная литература"),
-            "love_history": ("Исторические любовные романы", "Любовные романы"),
+            "love_history": ("Исторические любовные романы", "Романтика"),
             "sci_math": ("Математика", "Наука и образование"),
             "adv_maritime": ("Морские приключения", "Приключения"),
             "prose_magic": ("Магический реализм", "Проза"),
@@ -58,9 +58,9 @@ class AubooksGenresTest(unittest.TestCase):
         self.assertFalse(genre["mapped"])
 
     def test_unknown_russian_tag_keeps_readable_label(self):
-        genre = genre_for_tag(tag(8, "Легкая эротика"))
+        genre = genre_for_tag(tag(8, "Современная зарубежная литература"))
         self.assertEqual(genre["category"], UNKNOWN_CATEGORY)
-        self.assertEqual(genre["label"], "Легкая эротика")
+        self.assertEqual(genre["label"], "Современная зарубежная литература")
 
     def test_exact_unique_russian_label_uses_dictionary_category(self):
         genre = genre_for_tag(tag(9, "Фэнтези"))
@@ -103,7 +103,7 @@ class AubooksGenresTest(unittest.TestCase):
             tag(12, "sf_action"),
             tag(13, "custom_code"),
         ])
-        self.assertEqual(len(tree), 21)
+        self.assertEqual(len(tree), 22)
         fantasy = next(group for group in tree if group["category"] == "Фантастика")
         self.assertEqual([genre["tag_id"] for genre in fantasy["genres"]], [12, 11])
         self.assertFalse(any(genre["tag_id"] == 13 for group in tree for genre in group["genres"]))
@@ -204,9 +204,9 @@ class AubooksDetailTemplateTest(unittest.TestCase):
 
 class AubooksCategorySlugTest(unittest.TestCase):
 
-    def test_all_21_slugs_are_unique(self):
-        self.assertEqual(len(CATEGORY_SLUGS), 21)
-        self.assertEqual(len(set(CATEGORY_SLUGS)), 21)
+    def test_all_22_slugs_are_unique(self):
+        self.assertEqual(len(CATEGORY_SLUGS), 22)
+        self.assertEqual(len(set(CATEGORY_SLUGS)), 22)
 
     def test_category_by_slug_returns_label(self):
         self.assertEqual(category_by_slug("fantastika"), "Фантастика")
@@ -301,7 +301,7 @@ class AubooksCaseInsensitiveLookupTest(unittest.TestCase):
 
     def test_lybovnoe_fentezi_alias(self):
         genre = genre_for_tag(tag(72, "Любовное фэнтези"))
-        self.assertEqual(genre["category"], "Любовные романы")
+        self.assertEqual(genre["category"], "Романтика")
         self.assertTrue(genre["mapped"])
 
     def test_litrrpg_alias(self):
@@ -343,7 +343,7 @@ class AubooksCaseInsensitiveLookupTest(unittest.TestCase):
 
     def test_psihologiya_alias(self):
         genre = genre_for_tag(tag(201, "психология"))
-        self.assertEqual(genre["category"], "Наука и образование")
+        self.assertEqual(genre["category"], "Психология и здоровье")
         self.assertTrue(genre["mapped"])
 
     def test_voennaya_proza_alias(self):
@@ -386,6 +386,70 @@ class AubooksCaseInsensitiveLookupTest(unittest.TestCase):
     def test_fantasy_alias(self):
         genre = genre_for_tag(tag(209, "fantasy"))
         self.assertEqual(genre["category"], "Фантастика")
+        self.assertTrue(genre["mapped"])
+
+    # Wave 3 — category restructure: Романтика
+
+    def test_lyubovnyj_roman_alias_to_romance(self):
+        genre = genre_for_tag(tag(300, "Любовный роман"))
+        self.assertEqual(genre["category"], "Романтика")
+        self.assertTrue(genre["mapped"])
+
+    def test_love_fantasy_alias_to_romance(self):
+        genre = genre_for_tag(tag(301, "love_fantasy"))
+        self.assertEqual(genre["category"], "Романтика")
+        self.assertTrue(genre["mapped"])
+
+    def test_light_erotica_alias_to_romance(self):
+        genre = genre_for_tag(tag(302, "Легкая эротика"))
+        self.assertEqual(genre["category"], "Романтика")
+        self.assertTrue(genre["mapped"])
+
+    def test_love_code_maps_to_romance(self):
+        genre = genre_for_tag(tag(303, "love"))
+        self.assertEqual(genre["category"], "Романтика")
+        self.assertTrue(genre["mapped"])
+
+    # Wave 3 — category restructure: Психология и здоровье
+
+    def test_psihologiya_alias_to_psychology_health(self):
+        genre = genre_for_tag(tag(310, "психология"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_psy_theraphy_alias_to_psychology_health(self):
+        genre = genre_for_tag(tag(311, "psy_theraphy"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_foreign_psychology_alias_to_psychology_health(self):
+        genre = genre_for_tag(tag(312, "foreign_psychology"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_detskaya_psihologiya_alias_to_psychology_health(self):
+        genre = genre_for_tag(tag(313, "Детская психология"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_medicina_alias_to_psychology_health(self):
+        genre = genre_for_tag(tag(314, "Медицина"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_zdorove_alias_to_psychology_health(self):
+        genre = genre_for_tag(tag(315, "Здоровье"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_sci_psychology_code_to_psychology_health(self):
+        genre = genre_for_tag(tag(316, "sci_psychology"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
+        self.assertTrue(genre["mapped"])
+
+    def test_sci_medicine_code_to_psychology_health(self):
+        genre = genre_for_tag(tag(317, "sci_medicine"))
+        self.assertEqual(genre["category"], "Психология и здоровье")
         self.assertTrue(genre["mapped"])
 
 

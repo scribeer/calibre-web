@@ -83,7 +83,52 @@ def _load_genres():
 
 
 GENRES = _load_genres()
-CATEGORIES = tuple(category for category, __, ___ in _CATEGORY_RANGES)
+
+# ---------------------------------------------------------------------------
+# Category presentation remap
+# The raw _CATEGORY_RANGES must stay contiguous for file parsing, but we
+# rename categories for the user-facing presentation.
+# ---------------------------------------------------------------------------
+
+_CATEGORY_REMAP = {
+    "Любовные романы": "Романтика",
+    "Наука и образование": "Наука и образование",  # placeholder, rebuilt below
+    "Дом и семья": "Дом и семья",                   # placeholder, rebuilt below
+}
+
+# Codes that move from their original category to "Психология и здоровье".
+_PSYCHOLOGY_HEALTH_CODES = {
+    "home_health",        # Здоровье (was Дом и семья)
+    "sci_psychology_popular",  # Популярная психология (was Дом и семья)
+    "sci_psychology",     # Психология и психотерапия (was Наука и образование)
+    "sci_medicine",       # Медицина (was Наука и образование)
+    "sci_medicine_alternative",  # Альтернативная медицина (was Наука и образование)
+}
+
+_NEW_CATEGORY = "Психология и здоровье"
+
+for _genre in GENRES.values():
+    _old = _genre["category"]
+    if _genre["code"] in _PSYCHOLOGY_HEALTH_CODES:
+        _genre["category"] = _NEW_CATEGORY
+    elif _old in _CATEGORY_REMAP:
+        _genre["category"] = _CATEGORY_REMAP[_old]
+
+# Rebuild CATEGORIES from the actual categories present in GENRES, preserving
+# the original _CATEGORY_RANGES order and appending new categories at the end.
+_original_order = [cat for cat, __, ___ in _CATEGORY_RANGES]
+_seen = set()
+_categories = []
+for _cat in _original_order:
+    # Use remapped name if it changed
+    _mapped = _CATEGORY_REMAP.get(_cat, _cat)
+    if _mapped not in _seen and any(g["category"] == _mapped for g in GENRES.values()):
+        _categories.append(_mapped)
+        _seen.add(_mapped)
+# Append any new categories not in original order
+for _cat in sorted(set(g["category"] for g in GENRES.values()) - _seen):
+    _categories.append(_cat)
+CATEGORIES = tuple(_categories)
 _LABEL_GENRES = {}
 _DUPLICATE_LABELS = set()
 for _genre in GENRES.values():
@@ -162,6 +207,11 @@ EXTRA_ALIASES = {
     "Биография": "nonf_biography",
     "Наука": "sci_popular",
     "Научно-популярное": "sci_popular",
+    # Wave 3 — category restructure aliases
+    "Легкая эротика": "love_erotica",
+    "Детская психология": "sci_psychology",
+    "Медицина": "sci_medicine",
+    "Здоровье": "home_health",
 }
 
 _ALIAS_GENRES = {}
