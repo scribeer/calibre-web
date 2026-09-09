@@ -2,48 +2,23 @@
 {% block header %}
 <link href="{{ url_for('static', filename='css/libs/bootstrap-table.min.css') }}" rel="stylesheet">
 <style>
+  .tts-title-cell a { display: block; font-weight: 500; }
+  .tts-title-cell .tts-author { font-weight: normal; font-size: 13px; color: #666; }
   #tts-table .btn-sm { padding: 2px 8px; font-size: 12px; }
-  .tts-section { margin-top: 30px; }
-  .tts-section h2 { margin-bottom: 15px; }
-  .tts-error { color: #a94442; font-size: 12px; max-width: 300px; word-break: break-word; }
 </style>
 {% endblock %}
 {% block body %}
 <div class="discover">
-    <h2>{{_('Tasks')}}</h2>
-    <table class="table table-no-bordered" id="tasktable" data-url="{{  url_for('tasks.get_email_status_json') }}"  data-sort-name="starttime" data-sort-order="asc" data-locale="{{ current_user.locale }}" data-no-records-text="{{ _('No Records Found') }}">
-      <thead>
-        <tr>
-            {% if current_user.role_admin() %}
-            <th data-halign="right" data-align="right" data-field="user" data-sortable="true">{{_('User')}}</th>
-            {% endif %}
-            <th data-halign="right" data-align="right" data-field="taskMessage" data-sortable="true">{{_('Task')}}</th>
-            <th data-halign="right" data-align="right" data-field="status" data-sortable="true">{{_('Status')}}</th>
-            <th data-halign="right" data-align="right" data-field="progress" data-sortable="true" data-sorter="elementSorter">{{_('Progress')}}</th>
-            <th data-halign="right" data-align="right" data-field="runtime" data-sortable="true" data-sort-name="rt">{{_('Run Time')}}</th>
-            <th data-halign="right" data-align="right" data-field="starttime" data-sortable="true" data-sort-name="id">{{_('Start Time')}}</th>
-            <th data-halign="right" data-align="right" data-field="error" data-sortable="true">{{_('Message')}}</th>
-            {% if current_user.role_admin() %}
-            <th data-halign="right" data-align="right" data-formatter="TaskActions" data-switchable="false">{{_('Actions')}}</th>
-            {% endif %}
-            <th data-field="id" data-visible="false"></th>
-            <th data-field="rt" data-visible="false"></th>
-        </tr>
-      </thead>
-    </table>
-</div>
-
-<div class="discover tts-section">
-    <h2>{{_('Аудиокниги')}}</h2>
+    <h2>{{_('Озвучивание')}}</h2>
     <table class="table table-no-bordered" id="tts-table"
            data-sort-name="updated_at" data-sort-order="desc"
            data-no-records-text="{{ _('No Records Found') }}">
       <thead>
         <tr>
-            <th data-field="title" data-sortable="true">{{_('Книга')}}</th>
+            <th data-field="title_cell" data-sortable="true" data-sort-name="title">{{_('Книга')}}</th>
             <th data-field="status_label" data-sortable="true">{{_('Статус')}}</th>
-            <th data-field="created_at" data-sortable="true">{{_('Добавлено')}}</th>
-            <th data-field="updated_at" data-sortable="true">{{_('Обновлено')}}</th>
+            <th data-field="created_at_display" data-sortable="true" data-sort-name="created_at">{{_('Добавлено')}}</th>
+            <th data-field="updated_at_display" data-sortable="true" data-sort-name="updated_at">{{_('Обновлено')}}</th>
             <th data-field="filesize_display" data-sortable="true" data-sorter="elementSorter">{{_('Размер')}}</th>
             <th data-field="duration_display" data-sortable="true">{{_('Длительность')}}</th>
             <th data-field="error_display" data-sortable="false">{{_('Ошибка')}}</th>
@@ -53,36 +28,24 @@
     </table>
 </div>
 {% endblock %}
-{% block modal %}
-{{ delete_book(current_user.role_delete_books()) }}
-{% if current_user.role_admin() %}
-<div class="modal fade" id="cancelTaskModal" role="dialog" aria-labelledby="metaCancelTaskLabel">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header bg-danger text-center">
-          <h4 class="modal-title">{{_('Are you really sure?')}}</h4>
-      </div>
-        <div class="modal-body text-center">
-          <p>
-            <span>{{_('This task will be cancelled. Any progress made by this task will be saved.')}}</span>
-            <span>{{_('If this is a scheduled task, it will be re-ran during the next scheduled time.')}}</span>
-          </p>
-        </div>
-      <div class="modal-footer">
-        <input type="button" class="btn btn-danger" value="{{_('Ok')}}" name="cancel_task_confirm" id="cancel_task_confirm" data-dismiss="modal">
-        <button type="button" class="btn btn-default" data-dismiss="modal">{{_('Cancel')}}</button>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
-{% endblock %}
 {% block js %}
 <script src="{{ url_for('static', filename='js/libs/bootstrap-table/bootstrap-table.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/libs/bootstrap-table/bootstrap-table-locale-all.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/table.js') }}"></script>
 <script>
 (function() {
+  function formatDate(iso) {
+    if (!iso) return '—';
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return '—';
+      var dd = d.getDate();
+      var mm = d.getMonth() + 1;
+      var hh = d.getHours();
+      var mi = d.getMinutes();
+      return (dd < 10 ? '0' : '') + dd + '.' + (mm < 10 ? '0' : '') + mm + '.' + d.getFullYear() +
+             ' ' + (hh < 10 ? '0' : '') + hh + ':' + (mi < 10 ? '0' : '') + mi;
+    } catch(e) { return '—'; }
+  }
   function formatFilesize(bytes) {
     if (!bytes) return '—';
     if (bytes < 1024) return bytes + ' B';
@@ -100,24 +63,27 @@
   function truncateError(err, max) {
     if (!err) return '';
     max = max || 200;
-    return err.length > max ? err.substring(0, max) + '…' : err;
+    return err.length > max ? err.substring(0, max) + '\u2026' : err;
   }
-  function ttsActionFormatter(value, row) {
+  function titleCellFormatter(value, row) {
+    var html = '<a href="' + row.book_url + '">' + value + '</a>';
+    if (row.author) {
+      html += '<span class="tts-author">' + row.author + '</span>';
+    }
+    return html;
+  }
+  function actionFormatter(value, row) {
     if (row.status === 'ready' && row.download_url) {
       return '<a class="btn btn-success btn-sm" href="' + row.download_url + '">' +
-             '<span class="glyphicon glyphicon-download" aria-hidden="true"></span> Скачать аудиокнигу</a>';
+             '<span class="glyphicon glyphicon-download" aria-hidden="true"></span> \u0421\u043a\u0430\u0447\u0430\u0442\u044c \u0430\u0443\u0434\u0438\u043e\u043a\u043d\u0438\u0433\u0443</a>';
     }
     if (row.status === 'failed') {
       return '<a class="btn btn-default btn-sm" href="' + row.book_url + '">' +
-             '<span class="glyphicon glyphicon-book" aria-hidden="true"></span> Открыть книгу</a>';
+             '<span class="glyphicon glyphicon-book" aria-hidden="true"></span> \u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043a\u043d\u0438\u0433\u0443</a>';
     }
     return '';
   }
-  function titleFormatter(value, row) {
-    return '<a href="' + row.book_url + '">' + value + '</a>';
-  }
 
-  var ttsData = [];
   function loadTtsJobs() {
     $.ajax({
       method: 'get',
@@ -125,13 +91,16 @@
       async: true,
       timeout: 5000,
       success: function(data) {
-        ttsData = data.map(function(r) {
+        var rows = data.map(function(r) {
+          r.title_cell = r.title;
+          r.created_at_display = formatDate(r.created_at);
+          r.updated_at_display = formatDate(r.updated_at);
           r.filesize_display = formatFilesize(r.filesize);
           r.duration_display = formatDuration(r.duration);
           r.error_display = truncateError(r.error);
           return r;
         });
-        $('#tts-table').bootstrapTable('load', ttsData);
+        $('#tts-table').bootstrapTable('load', rows);
       }
     });
   }
@@ -140,7 +109,7 @@
     $('#tts-table').bootstrapTable({
       striped: true,
       classes: 'table table-no-bordered',
-      undefinedText: '—'
+      undefinedText: '\u2014'
     });
     loadTtsJobs();
     setInterval(loadTtsJobs, 5000);

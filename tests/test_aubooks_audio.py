@@ -560,46 +560,67 @@ class TestGetAudioJobs(unittest.TestCase):
 
 
 class TestTtsJobsTemplate(unittest.TestCase):
-    """Test tasks.html template with TTS section."""
+    """Test tasks.html template for AU-Books TTS page."""
+
+    def _read(self):
+        p = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
+        return p.read_text()
 
     def test_template_exists(self):
-        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
-        self.assertTrue(template_path.exists())
+        p = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
+        self.assertTrue(p.exists())
 
-    def test_template_has_tts_section(self):
-        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
-        content = template_path.read_text()
-        self.assertIn("Аудиокниги", content)
+    def test_page_title_is_ozvuchivanie(self):
+        content = self._read()
+        self.assertIn("Озвучивание", content)
+
+    def test_no_native_task_table(self):
+        content = self._read()
+        self.assertNotIn("tasktable", content)
+        self.assertNotIn("emailstat", content)
+
+    def test_has_tts_table(self):
+        content = self._read()
         self.assertIn("tts-table", content)
         self.assertIn("ajax/tts-jobs", content)
 
-    def test_template_has_russian_labels(self):
-        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
-        content = template_path.read_text()
-        self.assertIn("Книга", content)
-        self.assertIn("Статус", content)
-        self.assertIn("Добавлено", content)
-        self.assertIn("Обновлено", content)
-        self.assertIn("Размер", content)
-        self.assertIn("Длительность", content)
-        self.assertIn("Ошибка", content)
-        self.assertIn("Действие", content)
+    def test_has_russian_labels(self):
+        content = self._read()
+        for label in ["Книга", "Статус", "Добавлено", "Обновлено", "Размер", "Длительность", "Ошибка", "Действие"]:
+            self.assertIn(label, content)
 
-    def test_template_has_polling(self):
-        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
-        content = template_path.read_text()
+    def test_has_polling_5000(self):
+        content = self._read()
         self.assertIn("setInterval", content)
         self.assertIn("5000", content)
 
-    def test_template_has_download_action(self):
-        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
-        content = template_path.read_text()
-        self.assertIn("Скачать аудиокнигу", content)
-        self.assertIn("Открыть книгу", content)
+    def test_has_download_action(self):
+        content = self._read()
+        # Check for the Unicode escapes as they appear in the JS source
+        self.assertIn("\\u0421\\u043a\\u0430\\u0447\\u0430\\u0442\\u044c", content)
+        self.assertIn("\\u041e\\u0442\\u043a\\u0440\\u044b\\u0442\\u044c", content)
 
-    def test_template_extends_layout(self):
-        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
-        content = template_path.read_text()
+    def test_has_date_formatting_js(self):
+        content = self._read()
+        self.assertIn("formatDate", content)
+        self.assertIn("new Date", content)
+
+    def test_title_is_link(self):
+        content = self._read()
+        self.assertIn("title_cell", content)
+        self.assertIn("book_url", content)
+
+    def test_author_displayed(self):
+        content = self._read()
+        self.assertIn("tts-author", content)
+        self.assertIn("row.author", content)
+
+    def test_no_table_js_for_native_tasks(self):
+        content = self._read()
+        self.assertNotIn("table.js", content)
+
+    def test_extends_layout(self):
+        content = self._read()
         self.assertIn('extends theme("layout.html")', content)
 
 
