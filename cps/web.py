@@ -1903,8 +1903,8 @@ def download_audiobook(book_id):
         flash(_("Audio is not ready for download."), category="error")
         abort(404)
 
-    # 2. Get od_path from the record
-    od_path = record.get("od_path")
+    # 2. Get OpenDrive path from the record
+    od_path = record.get("opendrive_path")
     if not od_path:
         flash(_("Audio file path not available."), category="error")
         abort(404)
@@ -1914,9 +1914,8 @@ def download_audiobook(book_id):
         flash(_("Invalid audio file path."), category="error")
         abort(404)
 
-    # 4. Compute OpenDrive remote path
-    bucket = 1 if book_id < 100 else (book_id // 100) * 100
-    remote_path = f"calibre-books-v2/{bucket}/{book_id}.m4b"
+    # 4. Use opendrive_path directly (not computed path)
+    remote_path = od_path
 
     # 5. Fetch file from OpenDrive using rclone
     import tempfile

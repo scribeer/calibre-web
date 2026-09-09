@@ -258,12 +258,9 @@
                     {% if aubooks_audio_status is defined %}
                         <div class="btn-group" role="group" aria-label="{{_('Audio book status')}}">
                             {% if aubooks_audio_status == 'ready' %}
-                                <button type="button" class="btn btn-success"
-                                        data-book-id="{{ entry.id }}"
-                                        data-audio-status="ready"
-                                        aria-disabled="false">
-                                    <span class="glyphicon glyphicon-play" aria-hidden="true"></span> {{ _('Listen') }}
-                                </button>
+                                <a class="btn btn-success" href="{{ url_for('web.download_audiobook', book_id=entry.id) }}" style="display:inline">
+                                    <span class="glyphicon glyphicon-download" aria-hidden="true"></span> {{ _('Download audiobook') }}
+                                </a>
                             {% elif aubooks_audio_status == 'queued' %}
                                 <button type="button" class="btn btn-default" disabled
                                         aria-disabled="true"

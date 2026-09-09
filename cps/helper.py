@@ -949,24 +949,42 @@ def do_download_file(book, book_format, client, data, headers):
             abort(404)
     else:
         filename = os.path.join(config.get_book_path(), book.path)
+        _from_opendrive = False
         if not os.path.isfile(os.path.join(filename, book_name + "." + book_format)):
-            # ToDo: improve error handling
-            log.error('File not found: %s', os.path.join(filename, book_name + "." + book_format))
+            log.warning('File not found locally: %s', os.path.join(filename, book_name + "." + book_format))
+            # Try OpenDrive as fallback
+            from .opendrive import fetch_ebook_from_opendrive
+            od_local_path, od_cleanup = fetch_ebook_from_opendrive(book.id, book_format)
+            if od_local_path:
+                log.info('Ebook fetched from OpenDrive: book_id=%s format=%s', book.id, book_format)
+                filename = os.path.dirname(od_local_path)
+                download_name = os.path.splitext(os.path.basename(od_local_path))[0]
+                _from_opendrive = True
+                @after_this_request
+                def _cleanup_od_download(resp):
+                    if od_cleanup:
+                        od_cleanup()
+                    return resp
+            else:
+                abort(404)
 
         if client == "kobo" and book_format == "kepub":
             headers["Content-Disposition"] = headers["Content-Disposition"].replace(".kepub", ".kepub.epub")
 
-        if book_format == "kepub" and config.config_kepubifypath and config.config_embed_metadata:
-            filename, download_name = do_kepubify_metadata_replace(book, os.path.join(filename,
-                                                                                      book_name + "." + book_format))
-        elif book_format != "kepub" and config.config_binariesdir and config.config_embed_metadata:
-            filename, download_name = do_calibre_export(book.id, book_format)
-            if filename is None:
-                log.warning('Metadata export failed for book id %s. Falling back to original file: %s',
-                            book.id, download_name)
-                filename = os.path.join(config.get_book_path(), book.path)
+        if not _from_opendrive:
+            if book_format == "kepub" and config.config_kepubifypath and config.config_embed_metadata:
+                filename, download_name = do_kepubify_metadata_replace(book, os.path.join(filename,
+                                                                                          book_name + "." + book_format))
+            elif book_format != "kepub" and config.config_binariesdir and config.config_embed_metadata:
+                filename, download_name = do_calibre_export(book.id, book_format)
+                if filename is None:
+                    log.warning('Metadata export failed for book id %s. Falling back to original file: %s',
+                                book.id, download_name)
+                    filename = os.path.join(config.get_book_path(), book.path)
+                    download_name = book_name
+            else:
                 download_name = book_name
-        else:
+        elif download_name is None:
             download_name = book_name
 
     # Clean up staged copies in the instance temp directory after the response is sent

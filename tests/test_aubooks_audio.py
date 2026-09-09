@@ -193,7 +193,7 @@ class TestAudioStatusTemplate(unittest.TestCase):
         """Template should handle all 5 states."""
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
         content = template_path.read_text()
-        self.assertIn("data-audio-status=\"ready\"", content)
+        self.assertIn("download_audiobook", content)
         self.assertIn("data-audio-status=\"queued\"", content)
         self.assertIn("data-audio-status=\"processing\"", content)
         self.assertIn("data-audio-status=\"failed\"", content)
