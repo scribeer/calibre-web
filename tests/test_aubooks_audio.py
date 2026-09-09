@@ -402,5 +402,206 @@ class TestAudioAdapterAccessibility(unittest.TestCase):
             self.assertIn("data-book-id", section)
 
 
+class TestGetAudioJobs(unittest.TestCase):
+    """Test cps/aubooks_audio.py get_audio_jobs() function."""
+
+    def test_empty_db_returns_empty_list(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            from cps.aubooks_audio import get_audio_jobs
+            with patch("cps.aubooks_audio._get_db_path", return_value=p):
+                result = get_audio_jobs()
+                self.assertEqual(result, [])
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_missing_db_returns_empty_list(self):
+        from cps.aubooks_audio import get_audio_jobs
+        with patch("cps.aubooks_audio._get_db_path", return_value=Path("/nonexistent/audio.db")):
+            result = get_audio_jobs()
+            self.assertEqual(result, [])
+
+    def test_queued_and_processing_returned(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "INSERT INTO audio (book_id, status, created_at, updated_at) "
+                "VALUES (1, 'queued', '2026-09-09T10:00:00', '2026-09-09T10:00:00')"
+            )
+            conn.execute(
+                "INSERT INTO audio (book_id, status, created_at, updated_at) "
+                "VALUES (2, 'processing', '2026-09-09T10:01:00', '2026-09-09T10:01:00')"
+            )
+            conn.commit()
+            conn.close()
+            from cps.aubooks_audio import get_audio_jobs
+            with patch("cps.aubooks_audio._get_db_path", return_value=p):
+                result = get_audio_jobs()
+                statuses = {r["status"] for r in result}
+                self.assertIn("queued", statuses)
+                self.assertIn("processing", statuses)
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_ready_failed_returned(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "INSERT INTO audio (book_id, status, filename, filesize, created_at, updated_at) "
+                "VALUES (1, 'ready', 'test.m4b', 1000, '2026-09-09T10:00:00', '2026-09-09T10:00:00')"
+            )
+            conn.execute(
+                "INSERT INTO audio (book_id, status, error, created_at, updated_at) "
+                "VALUES (2, 'failed', 'TTS error', '2026-09-09T10:01:00', '2026-09-09T10:01:00')"
+            )
+            conn.commit()
+            conn.close()
+            from cps.aubooks_audio import get_audio_jobs
+            with patch("cps.aubooks_audio._get_db_path", return_value=p):
+                result = get_audio_jobs()
+                statuses = {r["status"] for r in result}
+                self.assertIn("ready", statuses)
+                self.assertIn("failed", statuses)
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_no_opendrive_path_exposed(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "INSERT INTO audio (book_id, status, filename, opendrive_path, sha256, filesize, created_at, updated_at) "
+                "VALUES (1, 'ready', 'test.m4b', 'Audiobooks/2026/09/test.m4b', 'abc', 1000, '2026-09-09T10:00:00', '2026-09-09T10:00:00')"
+            )
+            conn.commit()
+            conn.close()
+            from cps.aubooks_audio import get_audio_jobs
+            with patch("cps.aubooks_audio._get_db_path", return_value=p):
+                result = get_audio_jobs()
+                self.assertEqual(len(result), 1)
+                row = result[0]
+                self.assertNotIn("opendrive_path", row)
+                self.assertNotIn("sha256", row)
+                self.assertNotIn("job_id", row)
+                self.assertNotIn("id", row)
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_finished_limit(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            for i in range(60):
+                conn.execute(
+                    "INSERT INTO audio (book_id, status, filename, created_at, updated_at) "
+                    "VALUES (?, 'ready', 'test.m4b', ?, ?)",
+                    (i + 100, f"2026-09-09T{i//24:02d}:{i%24:02d}:00", f"2026-09-09T{i//24:02d}:{i%24:02d}:00")
+                )
+            conn.commit()
+            conn.close()
+            from cps.aubooks_audio import get_audio_jobs
+            with patch("cps.aubooks_audio._get_db_path", return_value=p):
+                result = get_audio_jobs()
+                self.assertLessEqual(len(result), 50)
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_newest_first_ordering(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "INSERT INTO audio (book_id, status, created_at, updated_at) "
+                "VALUES (1, 'ready', '2026-09-09T10:00:00', '2026-09-09T10:00:00')"
+            )
+            conn.execute(
+                "INSERT INTO audio (book_id, status, created_at, updated_at) "
+                "VALUES (2, 'ready', '2026-09-09T12:00:00', '2026-09-09T12:00:00')"
+            )
+            conn.commit()
+            conn.close()
+            from cps.aubooks_audio import get_audio_jobs
+            with patch("cps.aubooks_audio._get_db_path", return_value=p):
+                result = get_audio_jobs()
+                self.assertEqual(len(result), 2)
+                self.assertEqual(result[0]["book_id"], 2)
+                self.assertEqual(result[1]["book_id"], 1)
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_has_required_fields(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "INSERT INTO audio (book_id, status, filename, filesize, duration, error, created_at, updated_at) "
+                "VALUES (1, 'ready', 'test.m4b', 1024, 120.5, NULL, '2026-09-09T10:00:00', '2026-09-09T10:00:00')"
+            )
+            conn.commit()
+            conn.close()
+            from cps.aubooks_audio import get_audio_jobs
+            with patch("cps.aubooks_audio._get_db_path", return_value=p):
+                result = get_audio_jobs()
+                self.assertEqual(len(result), 1)
+                row = result[0]
+                required = {"book_id", "status", "filename", "filesize", "duration", "error", "created_at", "updated_at"}
+                self.assertTrue(required.issubset(set(row.keys())))
+        finally:
+            p.unlink(missing_ok=True)
+
+
+class TestTtsJobsTemplate(unittest.TestCase):
+    """Test tasks.html template with TTS section."""
+
+    def test_template_exists(self):
+        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
+        self.assertTrue(template_path.exists())
+
+    def test_template_has_tts_section(self):
+        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
+        content = template_path.read_text()
+        self.assertIn("Аудиокниги", content)
+        self.assertIn("tts-table", content)
+        self.assertIn("ajax/tts-jobs", content)
+
+    def test_template_has_russian_labels(self):
+        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
+        content = template_path.read_text()
+        self.assertIn("Книга", content)
+        self.assertIn("Статус", content)
+        self.assertIn("Добавлено", content)
+        self.assertIn("Обновлено", content)
+        self.assertIn("Размер", content)
+        self.assertIn("Длительность", content)
+        self.assertIn("Ошибка", content)
+        self.assertIn("Действие", content)
+
+    def test_template_has_polling(self):
+        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
+        content = template_path.read_text()
+        self.assertIn("setInterval", content)
+        self.assertIn("5000", content)
+
+    def test_template_has_download_action(self):
+        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
+        content = template_path.read_text()
+        self.assertIn("Скачать аудиокнигу", content)
+        self.assertIn("Открыть книгу", content)
+
+    def test_template_extends_layout(self):
+        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "tasks.html"
+        content = template_path.read_text()
+        self.assertIn('extends theme("layout.html")', content)
+
+
 if __name__ == "__main__":
     unittest.main()

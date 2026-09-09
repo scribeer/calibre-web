@@ -1,0 +1,150 @@
+{% extends theme("layout.html") %}
+{% block header %}
+<link href="{{ url_for('static', filename='css/libs/bootstrap-table.min.css') }}" rel="stylesheet">
+<style>
+  #tts-table .btn-sm { padding: 2px 8px; font-size: 12px; }
+  .tts-section { margin-top: 30px; }
+  .tts-section h2 { margin-bottom: 15px; }
+  .tts-error { color: #a94442; font-size: 12px; max-width: 300px; word-break: break-word; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="discover">
+    <h2>{{_('Tasks')}}</h2>
+    <table class="table table-no-bordered" id="tasktable" data-url="{{  url_for('tasks.get_email_status_json') }}"  data-sort-name="starttime" data-sort-order="asc" data-locale="{{ current_user.locale }}" data-no-records-text="{{ _('No Records Found') }}">
+      <thead>
+        <tr>
+            {% if current_user.role_admin() %}
+            <th data-halign="right" data-align="right" data-field="user" data-sortable="true">{{_('User')}}</th>
+            {% endif %}
+            <th data-halign="right" data-align="right" data-field="taskMessage" data-sortable="true">{{_('Task')}}</th>
+            <th data-halign="right" data-align="right" data-field="status" data-sortable="true">{{_('Status')}}</th>
+            <th data-halign="right" data-align="right" data-field="progress" data-sortable="true" data-sorter="elementSorter">{{_('Progress')}}</th>
+            <th data-halign="right" data-align="right" data-field="runtime" data-sortable="true" data-sort-name="rt">{{_('Run Time')}}</th>
+            <th data-halign="right" data-align="right" data-field="starttime" data-sortable="true" data-sort-name="id">{{_('Start Time')}}</th>
+            <th data-halign="right" data-align="right" data-field="error" data-sortable="true">{{_('Message')}}</th>
+            {% if current_user.role_admin() %}
+            <th data-halign="right" data-align="right" data-formatter="TaskActions" data-switchable="false">{{_('Actions')}}</th>
+            {% endif %}
+            <th data-field="id" data-visible="false"></th>
+            <th data-field="rt" data-visible="false"></th>
+        </tr>
+      </thead>
+    </table>
+</div>
+
+<div class="discover tts-section">
+    <h2>{{_('Аудиокниги')}}</h2>
+    <table class="table table-no-bordered" id="tts-table"
+           data-sort-name="updated_at" data-sort-order="desc"
+           data-no-records-text="{{ _('No Records Found') }}">
+      <thead>
+        <tr>
+            <th data-field="title" data-sortable="true">{{_('Книга')}}</th>
+            <th data-field="status_label" data-sortable="true">{{_('Статус')}}</th>
+            <th data-field="created_at" data-sortable="true">{{_('Добавлено')}}</th>
+            <th data-field="updated_at" data-sortable="true">{{_('Обновлено')}}</th>
+            <th data-field="filesize_display" data-sortable="true" data-sorter="elementSorter">{{_('Размер')}}</th>
+            <th data-field="duration_display" data-sortable="true">{{_('Длительность')}}</th>
+            <th data-field="error_display" data-sortable="false">{{_('Ошибка')}}</th>
+            <th data-field="action" data-sortable="false">{{_('Действие')}}</th>
+        </tr>
+      </thead>
+    </table>
+</div>
+{% endblock %}
+{% block modal %}
+{{ delete_book(current_user.role_delete_books()) }}
+{% if current_user.role_admin() %}
+<div class="modal fade" id="cancelTaskModal" role="dialog" aria-labelledby="metaCancelTaskLabel">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-center">
+          <h4 class="modal-title">{{_('Are you really sure?')}}</h4>
+      </div>
+        <div class="modal-body text-center">
+          <p>
+            <span>{{_('This task will be cancelled. Any progress made by this task will be saved.')}}</span>
+            <span>{{_('If this is a scheduled task, it will be re-ran during the next scheduled time.')}}</span>
+          </p>
+        </div>
+      <div class="modal-footer">
+        <input type="button" class="btn btn-danger" value="{{_('Ok')}}" name="cancel_task_confirm" id="cancel_task_confirm" data-dismiss="modal">
+        <button type="button" class="btn btn-default" data-dismiss="modal">{{_('Cancel')}}</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block js %}
+<script src="{{ url_for('static', filename='js/libs/bootstrap-table/bootstrap-table.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/libs/bootstrap-table/bootstrap-table-locale-all.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/table.js') }}"></script>
+<script>
+(function() {
+  function formatFilesize(bytes) {
+    if (!bytes) return '—';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+  }
+  function formatDuration(seconds) {
+    if (!seconds) return '—';
+    var h = Math.floor(seconds / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    var s = Math.floor(seconds % 60);
+    if (h > 0) return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function truncateError(err, max) {
+    if (!err) return '';
+    max = max || 200;
+    return err.length > max ? err.substring(0, max) + '…' : err;
+  }
+  function ttsActionFormatter(value, row) {
+    if (row.status === 'ready' && row.download_url) {
+      return '<a class="btn btn-success btn-sm" href="' + row.download_url + '">' +
+             '<span class="glyphicon glyphicon-download" aria-hidden="true"></span> Скачать аудиокнигу</a>';
+    }
+    if (row.status === 'failed') {
+      return '<a class="btn btn-default btn-sm" href="' + row.book_url + '">' +
+             '<span class="glyphicon glyphicon-book" aria-hidden="true"></span> Открыть книгу</a>';
+    }
+    return '';
+  }
+  function titleFormatter(value, row) {
+    return '<a href="' + row.book_url + '">' + value + '</a>';
+  }
+
+  var ttsData = [];
+  function loadTtsJobs() {
+    $.ajax({
+      method: 'get',
+      url: '/ajax/tts-jobs',
+      async: true,
+      timeout: 5000,
+      success: function(data) {
+        ttsData = data.map(function(r) {
+          r.filesize_display = formatFilesize(r.filesize);
+          r.duration_display = formatDuration(r.duration);
+          r.error_display = truncateError(r.error);
+          return r;
+        });
+        $('#tts-table').bootstrapTable('load', ttsData);
+      }
+    });
+  }
+
+  $(function() {
+    $('#tts-table').bootstrapTable({
+      striped: true,
+      classes: 'table table-no-bordered',
+      undefinedText: '—'
+    });
+    loadTtsJobs();
+    setInterval(loadTtsJobs, 5000);
+  });
+})();
+</script>
+{% endblock %}

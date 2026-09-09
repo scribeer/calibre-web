@@ -22,7 +22,7 @@ from flask_babel import gettext as _
 from flask_babel import format_datetime
 from babel.units import format_unit
 
-from . import logger
+from . import logger, calibre_db, db
 from .render_template import render_title_template
 from .services.worker import WorkerThread, STAT_WAITING, STAT_FAIL, STAT_STARTED, STAT_FINISH_SUCCESS, STAT_ENDED, \
     STAT_CANCELLED
@@ -38,6 +38,51 @@ log = logger.create()
 def get_email_status_json():
     tasks = WorkerThread.get_instance().tasks
     return jsonify(render_task_status(tasks))
+
+
+@tasks.route("/ajax/tts-jobs")
+@user_login_required
+def get_tts_jobs_json():
+    """Return audio jobs from audio.db with metadata from calibre DB."""
+    from .aubooks_audio import get_audio_jobs, STATUS_LABELS
+
+    rows = get_audio_jobs()
+    if not rows:
+        return jsonify([])
+
+    # Batch-fetch book metadata for all book_ids
+    book_ids = [r["book_id"] for r in rows]
+    books_map = {}
+    try:
+        books = calibre_db.session.query(db.Books).filter(db.Books.id.in_(book_ids)).all()
+        for b in books:
+            authors = ", ".join(a.name for a in b.authors) if b.authors else ""
+            books_map[b.id] = {"title": b.title, "author": authors}
+    except Exception as e:
+        log.debug("Failed to fetch book metadata for TTS jobs: %s", e)
+
+    result = []
+    for r in rows:
+        bid = r["book_id"]
+        meta = books_map.get(bid, {"title": f"Book #{bid}", "author": ""})
+        status = r["status"]
+        item = {
+            "book_id": bid,
+            "title": meta["title"],
+            "author": meta["author"],
+            "status": status,
+            "status_label": STATUS_LABELS.get(status, status),
+            "created_at": r["created_at"],
+            "updated_at": r["updated_at"],
+            "filesize": r["filesize"],
+            "duration": r["duration"],
+            "error": r["error"],
+            "book_url": f"/book/{bid}",
+            "download_url": f"/books/{bid}/audio/download" if status == "ready" else None,
+        }
+        result.append(item)
+
+    return jsonify(result)
 
 
 @tasks.route("/tasks")
