@@ -1830,6 +1830,30 @@ def show_book(book_id):
 
 
 # ---------------------------------------------------------------------------
+# AU-Books: Audio Status API (polling for detail page)
+# ---------------------------------------------------------------------------
+
+@web.route("/ajax/audio-status/<int:book_id>")
+@login_required_if_no_ano
+def get_audio_status_json(book_id):
+    """Return current TTS status for a book as minimal JSON.
+
+    Used by detail page polling to update status without page reload.
+    """
+    from .aubooks_audio import get_audio_status, get_audio_record
+
+    status = get_audio_status(book_id)
+    result = {"status": status, "download_url": None, "generate_url": None}
+
+    if status == "ready":
+        result["download_url"] = url_for("web.download_audiobook", book_id=book_id)
+    elif status in ("not_available", "failed"):
+        result["generate_url"] = url_for("web.generate_audio", book_id=book_id)
+
+    return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
 # AU-Books: Generate Audio (TTS)
 # ---------------------------------------------------------------------------
 

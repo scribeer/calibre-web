@@ -256,31 +256,29 @@
                     {% endif %}
                     {# AU-Books: audio status from audio.db #}
                     {% if aubooks_audio_status is defined %}
-                        <div class="btn-group" role="group" aria-label="{{_('Audio book status')}}">
+                        <div id="aubooks-audio-status"
+                             data-book-id="{{ entry.id }}"
+                             data-audio-status="{{ aubooks_audio_status }}"
+                             data-csrf="{{ csrf_token() }}"
+                             role="group" aria-label="{{_('Audio book status')}}">
                             {% if aubooks_audio_status == 'ready' %}
                                 <a class="btn btn-success" href="{{ url_for('web.download_audiobook', book_id=entry.id) }}" style="display:inline">
                                     <span class="glyphicon glyphicon-download" aria-hidden="true"></span> {{ _('Download audiobook') }}
                                 </a>
                             {% elif aubooks_audio_status == 'queued' %}
                                 <button type="button" class="btn btn-default" disabled
-                                        aria-disabled="true"
-                                        data-book-id="{{ entry.id }}"
-                                        data-audio-status="queued">
+                                        aria-disabled="true">
                                     <span class="glyphicon glyphicon-time" aria-hidden="true"></span> {{ _('In queue') }}
                                 </button>
                             {% elif aubooks_audio_status == 'processing' %}
                                 <button type="button" class="btn btn-default" disabled
-                                        aria-disabled="true"
-                                        data-book-id="{{ entry.id }}"
-                                        data-audio-status="processing">
+                                        aria-disabled="true">
                                     <span class="glyphicon glyphicon-cog" aria-hidden="true"></span> {{ _('Generating audio…') }}
                                 </button>
                             {% elif aubooks_audio_status == 'failed' %}
                                 <form method="POST" action="{{ url_for('web.generate_audio', book_id=entry.id) }}" style="display:inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn btn-warning"
-                                            data-book-id="{{ entry.id }}"
-                                            data-audio-status="failed">
+                                    <button type="submit" class="btn btn-warning">
                                         <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> {{ _('Retry audio') }}
                                     </button>
                                 </form>
@@ -288,9 +286,7 @@
                                 {% if current_user.role_tts() %}
                                 <form method="POST" action="{{ url_for('web.generate_audio', book_id=entry.id) }}" style="display:inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn btn-default"
-                                            data-book-id="{{ entry.id }}"
-                                            data-audio-status="not_available">
+                                    <button type="submit" class="btn btn-default">
                                         <span class="glyphicon glyphicon-music" aria-hidden="true"></span> {{ _('Generate audio') }}
                                     </button>
                                 </form>
@@ -384,4 +380,111 @@
 </script>
 <script src="{{ url_for('static', filename='js/details.js') }}"></script>
 <script src="{{ url_for('static', filename='js/fullscreen.js') }}"></script>
+<script>
+(function() {
+  var el = document.getElementById('aubooks-audio-status');
+  if (!el) return;
+  var status = el.getAttribute('data-audio-status');
+  if (status !== 'queued' && status !== 'processing') return;
+  var bookId = el.getAttribute('data-book-id');
+  var url = '/ajax/audio-status/' + bookId;
+  var interval = setInterval(function() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status !== 200) return;
+      try {
+        var data = JSON.parse(xhr.responseText);
+      } catch(e) { return; }
+      var s = data.status;
+      if (s === 'ready') {
+        clearInterval(interval);
+        el.innerHTML = '';
+        var a = document.createElement('a');
+        a.className = 'btn btn-success';
+        a.href = data.download_url;
+        a.style.display = 'inline';
+        var sp = document.createElement('span');
+        sp.className = 'glyphicon glyphicon-download';
+        sp.setAttribute('aria-hidden', 'true');
+        a.appendChild(sp);
+        a.appendChild(document.createTextNode(' {{ _("Скачать аудиокнигу") }}'));
+        el.appendChild(a);
+      } else if (s === 'failed') {
+        clearInterval(interval);
+        el.innerHTML = '';
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = data.generate_url;
+        form.style.display = 'inline';
+        var inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = 'csrf_token';
+        inp.value = el.getAttribute('data-csrf');
+        form.appendChild(inp);
+        var btn = document.createElement('button');
+        btn.type = 'submit';
+        btn.className = 'btn btn-warning';
+        var sp2 = document.createElement('span');
+        sp2.className = 'glyphicon glyphicon-refresh';
+        sp2.setAttribute('aria-hidden', 'true');
+        btn.appendChild(sp2);
+        btn.appendChild(document.createTextNode(' {{ _("Озвучить повторно") }}'));
+        form.appendChild(btn);
+        el.appendChild(form);
+      } else if (s === 'not_available') {
+        clearInterval(interval);
+        el.innerHTML = '';
+        var form2 = document.createElement('form');
+        form2.method = 'POST';
+        form2.action = data.generate_url;
+        form2.style.display = 'inline';
+        var inp2 = document.createElement('input');
+        inp2.type = 'hidden';
+        inp2.name = 'csrf_token';
+        inp2.value = el.getAttribute('data-csrf');
+        form2.appendChild(inp2);
+        var btn2 = document.createElement('button');
+        btn2.type = 'submit';
+        btn2.className = 'btn btn-default';
+        var sp3 = document.createElement('span');
+        sp3.className = 'glyphicon glyphicon-music';
+        sp3.setAttribute('aria-hidden', 'true');
+        btn2.appendChild(sp3);
+        btn2.appendChild(document.createTextNode(' {{ _("Озвучить") }}'));
+        form2.appendChild(btn2);
+        el.appendChild(form2);
+      } else if (s === 'queued') {
+        el.innerHTML = '';
+        var btn3 = document.createElement('button');
+        btn3.type = 'button';
+        btn3.className = 'btn btn-default';
+        btn3.disabled = true;
+        btn3.setAttribute('aria-disabled', 'true');
+        var sp4 = document.createElement('span');
+        sp4.className = 'glyphicon glyphicon-time';
+        sp4.setAttribute('aria-hidden', 'true');
+        btn3.appendChild(sp4);
+        btn3.appendChild(document.createTextNode(' {{ _("В очереди") }}'));
+        el.appendChild(btn3);
+      } else if (s === 'processing') {
+        el.innerHTML = '';
+        var btn4 = document.createElement('button');
+        btn4.type = 'button';
+        btn4.className = 'btn btn-default';
+        btn4.disabled = true;
+        btn4.setAttribute('aria-disabled', 'true');
+        var sp5 = document.createElement('span');
+        sp5.className = 'glyphicon glyphicon-cog';
+        sp5.setAttribute('aria-hidden', 'true');
+        btn4.appendChild(sp5);
+        btn4.appendChild(document.createTextNode(' {{ _("Озвучивается…") }}'));
+        el.appendChild(btn4);
+      }
+    };
+    xhr.send();
+  }, 5000);
+})();
+</script>
 {% endblock %}

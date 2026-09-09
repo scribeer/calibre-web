@@ -4469,11 +4469,15 @@ msgstr "Обложка"
 
 #: cps/themes/aubooks/templates/detail.html
 msgid "Generate audio"
-msgstr "Сгенерировать аудио"
+msgstr "Озвучить"
 
 #: cps/themes/aubooks/templates/detail.html
 msgid "Generating audio…"
-msgstr "Генерация аудио…"
+msgstr "Озвучивается…"
+
+#: cps/themes/aubooks/templates/detail.html
+msgid "Download audiobook"
+msgstr "Скачать аудиокнигу"
 
 #: cps/themes/aubooks/templates/layout.html
 msgid "Grid"
@@ -4549,7 +4553,7 @@ msgstr "найдено результатов"
 
 #: cps/themes/aubooks/templates/detail.html
 msgid "Retry audio"
-msgstr "Повторить аудио"
+msgstr "Озвучить повторно"
 
 #: cps/themes/aubooks/templates/layout.html
 msgid "Search results"

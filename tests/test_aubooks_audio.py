@@ -3,6 +3,7 @@
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -178,63 +179,213 @@ class TestAudioAdapter(unittest.TestCase):
             p.unlink(missing_ok=True)
 
 
+class TestAudioStatusEndpoint(unittest.TestCase):
+    """Test GET /ajax/audio-status/<book_id> JSON structure."""
+
+    def _make_app(self):
+        """Create minimal Flask app with only the audio status endpoint."""
+        import flask
+        app = flask.Flask(__name__)
+        app.secret_key = 'test'
+        app.config['TESTING'] = True
+
+        @app.route("/ajax/audio-status/<int:book_id>")
+        def get_audio_status_json(book_id):
+            from cps.aubooks_audio import get_audio_status
+            status = get_audio_status(book_id)
+            result = {"status": status, "download_url": None, "generate_url": None}
+            if status == "ready":
+                result["download_url"] = f"/books/{book_id}/audio/download"
+            elif status in ("not_available", "failed"):
+                result["generate_url"] = f"/books/{book_id}/generate-audio"
+            return flask.jsonify(result)
+
+        return app
+
+    def test_not_available_json(self):
+        app = self._make_app()
+        with app.test_client() as c:
+            r = c.get("/ajax/audio-status/999999")
+            self.assertEqual(r.status_code, 200)
+            data = r.get_json()
+            self.assertEqual(data["status"], "not_available")
+            self.assertIsNone(data["download_url"])
+            self.assertIn("generate_url", data)
+
+    def test_ready_json(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "INSERT INTO audio (book_id, status, filename, opendrive_path, sha256, filesize, created_at, updated_at) "
+                "VALUES (100, 'ready', 'Test.m4b', 'Audiobooks/2026/09/Test.m4b', 'abc', 1000, datetime('now'), datetime('now'))"
+            )
+            conn.commit()
+            conn.close()
+            app = self._make_app()
+            with app.test_client() as c, patch("cps.aubooks_audio._get_db_path", return_value=p):
+                r = c.get("/ajax/audio-status/100")
+                self.assertEqual(r.status_code, 200)
+                data = r.get_json()
+                self.assertEqual(data["status"], "ready")
+                self.assertIn("/books/100/audio/download", data["download_url"])
+                self.assertIsNone(data["generate_url"])
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_queued_json(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "INSERT INTO audio (book_id, status, created_at, updated_at) "
+                "VALUES (100, 'queued', datetime('now'), datetime('now'))"
+            )
+            conn.commit()
+            conn.close()
+            app = self._make_app()
+            with app.test_client() as c, patch("cps.aubooks_audio._get_db_path", return_value=p):
+                r = c.get("/ajax/audio-status/100")
+                self.assertEqual(r.status_code, 200)
+                data = r.get_json()
+                self.assertEqual(data["status"], "queued")
+                self.assertIsNone(data["download_url"])
+                self.assertIsNone(data["generate_url"])
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_processing_json(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "INSERT INTO audio (book_id, status, created_at, updated_at) "
+                "VALUES (100, 'processing', datetime('now'), datetime('now'))"
+            )
+            conn.commit()
+            conn.close()
+            app = self._make_app()
+            with app.test_client() as c, patch("cps.aubooks_audio._get_db_path", return_value=p):
+                r = c.get("/ajax/audio-status/100")
+                self.assertEqual(r.status_code, 200)
+                data = r.get_json()
+                self.assertEqual(data["status"], "processing")
+                self.assertIsNone(data["download_url"])
+                self.assertIsNone(data["generate_url"])
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_failed_json(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "INSERT INTO audio (book_id, status, error, created_at, updated_at) "
+                "VALUES (100, 'failed', 'TTS crashed', datetime('now'), datetime('now'))"
+            )
+            conn.commit()
+            conn.close()
+            app = self._make_app()
+            with app.test_client() as c, patch("cps.aubooks_audio._get_db_path", return_value=p):
+                r = c.get("/ajax/audio-status/100")
+                self.assertEqual(r.status_code, 200)
+                data = r.get_json()
+                self.assertEqual(data["status"], "failed")
+                self.assertIsNone(data["download_url"])
+                self.assertIn("generate_url", data)
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_no_opendrive_path_exposed(self):
+        p = tmp_db()
+        try:
+            init_db(p)
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "INSERT INTO audio (book_id, status, filename, opendrive_path, sha256, filesize, created_at, updated_at) "
+                "VALUES (100, 'ready', 'Test.m4b', 'Audiobooks/2026/09/Test.m4b', 'abc', 1000, datetime('now'), datetime('now'))"
+            )
+            conn.commit()
+            conn.close()
+            app = self._make_app()
+            with app.test_client() as c, patch("cps.aubooks_audio._get_db_path", return_value=p):
+                r = c.get("/ajax/audio-status/100")
+                data = r.get_json()
+                self.assertNotIn("opendrive_path", data)
+                self.assertNotIn("error", data)
+                self.assertNotIn("sha256", data)
+                self.assertNotIn("filename", data)
+        finally:
+            p.unlink(missing_ok=True)
+
+    def test_endpoint_returns_only_three_keys(self):
+        app = self._make_app()
+        with app.test_client() as c:
+            r = c.get("/ajax/audio-status/1")
+            data = r.get_json()
+            self.assertEqual(set(data.keys()), {"status", "download_url", "generate_url"})
+
+
 class TestAudioStatusTemplate(unittest.TestCase):
     """Test template rendering with audio status."""
 
     def test_template_has_audio_button(self):
-        """Template should render audio status button."""
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
         content = template_path.read_text()
-        # Check for audio status section
         self.assertIn("aubooks_audio_status", content)
         self.assertIn("data-audio-status", content)
 
     def test_template_has_all_states(self):
-        """Template should handle all 5 states."""
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
         content = template_path.read_text()
         self.assertIn("download_audiobook", content)
-        self.assertIn("data-audio-status=\"queued\"", content)
-        self.assertIn("data-audio-status=\"processing\"", content)
-        self.assertIn("data-audio-status=\"failed\"", content)
-        self.assertIn("data-audio-status=\"not_available\"", content)
+        self.assertIn("audio_status == 'queued'", content)
+        self.assertIn("audio_status == 'processing'", content)
+        self.assertIn("audio_status == 'failed'", content)
+        self.assertIn("role_tts()", content)
 
     def test_template_no_href_hash(self):
-        """Template should not use <a href=\"#\">."""
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
         content = template_path.read_text()
-        self.assertNotIn('href="#"', content)
         self.assertNotIn('href="#"', content)
 
-    def test_template_uses_buttons(self):
-        """Audio status should use <button> elements."""
+    def test_template_has_russian_labels(self):
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
         content = template_path.read_text()
-        # Find the audio status section
-        idx = content.find("aubooks_audio_status")
-        if idx >= 0:
-            # Check that buttons are used, not links
-            section = content[idx:idx+2000]
-            self.assertIn("<button", section)
-            self.assertNotIn("<a ", section.split("audio status")[1].split("endblock")[0] if "audio status" in section else "")
+        self.assertIn("Скачать аудиокнигу", content)
+        self.assertIn("Озвучить повторно", content)
+        self.assertIn("Озвучить", content)
+
+    def test_template_has_polling_js(self):
+        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
+        content = template_path.read_text()
+        self.assertIn("aubooks-audio-status", content)
+        self.assertIn("ajax/audio-status", content)
+        self.assertIn("setInterval", content)
+        self.assertIn("data-csrf", content)
+
+    def test_template_has_container_id(self):
+        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
+        content = template_path.read_text()
+        self.assertIn('id="aubooks-audio-status"', content)
 
 
 class TestAudioAdapterAccessibility(unittest.TestCase):
     """Test accessibility of audio status elements."""
 
     def test_buttons_have_aria_disabled(self):
-        """Disabled buttons should have aria-disabled."""
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
         content = template_path.read_text()
-        # Find disabled buttons in audio section
         idx = content.find("aubooks_audio_status")
         if idx >= 0:
             section = content[idx:idx+2000]
-            # Queued and processing should be disabled
             self.assertIn('aria-disabled="true"', section)
 
     def test_buttons_have_aria_labels(self):
-        """Audio button group should have aria-label."""
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
         content = template_path.read_text()
         idx = content.find("aubooks_audio_status")
@@ -243,7 +394,6 @@ class TestAudioAdapterAccessibility(unittest.TestCase):
             self.assertIn("aria-label", section)
 
     def test_buttons_have_data_book_id(self):
-        """Buttons should have data-book-id for future integration."""
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
         content = template_path.read_text()
         idx = content.find("aubooks_audio_status")
