@@ -1,4 +1,5 @@
 {% extends theme("layout.html") %}
+{% set title = _('Озвучивание') %}
 {% block header %}
 <link href="{{ url_for('static', filename='css/libs/bootstrap-table.min.css') }}" rel="stylesheet">
 <style>
@@ -15,7 +16,7 @@
            data-no-records-text="{{ _('No Records Found') }}">
       <thead>
         <tr>
-            <th data-field="title_cell" data-sortable="true" data-sort-name="title">{{_('Книга')}}</th>
+            <th data-field="title_cell" data-class="tts-title-cell" data-sortable="true" data-sort-name="title">{{_('Книга')}}</th>
             <th data-field="status_label" data-sortable="true">{{_('Статус')}}</th>
             <th data-field="created_at_display" data-sortable="true" data-sort-name="created_at">{{_('Добавлено')}}</th>
             <th data-field="updated_at_display" data-sortable="true" data-sort-name="updated_at">{{_('Обновлено')}}</th>
@@ -61,14 +62,20 @@
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
   function truncateError(err, max) {
-    if (!err) return '';
+    if (!err) return '\u2014';
     max = max || 200;
-    return err.length > max ? err.substring(0, max) + '\u2026' : err;
+    err = err.length > max ? err.substring(0, max) + '\u2026' : err;
+    return escapeHtml(err);
+  }
+  function escapeHtml(value) {
+    var node = document.createElement('span');
+    node.textContent = value || '';
+    return node.innerHTML;
   }
   function titleCellFormatter(value, row) {
-    var html = '<a href="' + row.book_url + '">' + value + '</a>';
+    var html = '<a href="' + escapeHtml(row.book_url) + '">' + escapeHtml(value) + '</a>';
     if (row.author) {
-      html += '<span class="tts-author">' + row.author + '</span>';
+      html += '<span class="tts-author">' + escapeHtml(row.author) + '</span>';
     }
     return html;
   }
@@ -81,7 +88,7 @@
       return '<a class="btn btn-default btn-sm" href="' + row.book_url + '">' +
              '<span class="glyphicon glyphicon-book" aria-hidden="true"></span> \u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043a\u043d\u0438\u0433\u0443</a>';
     }
-    return '';
+    return '\u2014';
   }
 
   function loadTtsJobs() {
@@ -92,12 +99,13 @@
       timeout: 5000,
       success: function(data) {
         var rows = data.map(function(r) {
-          r.title_cell = r.title;
+          r.title_cell = titleCellFormatter(r.title, r);
           r.created_at_display = formatDate(r.created_at);
           r.updated_at_display = formatDate(r.updated_at);
           r.filesize_display = formatFilesize(r.filesize);
           r.duration_display = formatDuration(r.duration);
           r.error_display = truncateError(r.error);
+          r.action = actionFormatter(null, r);
           return r;
         });
         $('#tts-table').bootstrapTable('load', rows);

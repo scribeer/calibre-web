@@ -599,6 +599,7 @@ class TestTtsJobsTemplate(unittest.TestCase):
         # Check for the Unicode escapes as they appear in the JS source
         self.assertIn("\\u0421\\u043a\\u0430\\u0447\\u0430\\u0442\\u044c", content)
         self.assertIn("\\u041e\\u0442\\u043a\\u0440\\u044b\\u0442\\u044c", content)
+        self.assertIn("r.action = actionFormatter(null, r)", content)
 
     def test_has_date_formatting_js(self):
         content = self._read()
@@ -607,13 +608,25 @@ class TestTtsJobsTemplate(unittest.TestCase):
 
     def test_title_is_link(self):
         content = self._read()
-        self.assertIn("title_cell", content)
+        self.assertIn('data-class="tts-title-cell"', content)
+        self.assertIn("r.title_cell = titleCellFormatter(r.title, r)", content)
         self.assertIn("book_url", content)
 
     def test_author_displayed(self):
         content = self._read()
         self.assertIn("tts-author", content)
         self.assertIn("row.author", content)
+
+    def test_dynamic_content_is_escaped(self):
+        content = self._read()
+        self.assertIn("function escapeHtml", content)
+        self.assertIn("escapeHtml(value)", content)
+        self.assertIn("escapeHtml(row.author)", content)
+
+    def test_empty_error_and_action_show_dash(self):
+        content = self._read()
+        self.assertIn("if (!err) return '\\u2014'", content)
+        self.assertIn("return '\\u2014';", content)
 
     def test_no_table_js_for_native_tasks(self):
         content = self._read()
