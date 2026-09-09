@@ -1878,3 +1878,111 @@ def generate_audio(book_id):
         flash(_(result.error_message), category="error")
 
     return redirect(url_for("web.show_book", book_id=book_id), code=303)
+
+# ---------------------------------------------------------------------------
+# AU-Books: Download ready audiobook from OpenDrive
+# ---------------------------------------------------------------------------
+
+@web.route("/books/<int:book_id>/audio/download", methods=["GET"])
+@login_required_if_no_ano
+def download_audiobook(book_id):
+    """Download ready audiobook from OpenDrive.
+
+    Fetches the M4B file from OpenDrive and serves it as a download.
+    Uses server-side rclone fetch with temp file cleanup.
+    """
+    from .aubooks_audio import get_audio_record
+
+    # 1. Check audio status — only ready allowed
+    record = get_audio_record(book_id)
+    if record is None:
+        flash(_("Audio record not found."), category="error")
+        abort(404)
+
+    if record.get("status") != "ready":
+        flash(_("Audio is not ready for download."), category="error")
+        abort(404)
+
+    # 2. Get od_path from the record
+    od_path = record.get("od_path")
+    if not od_path:
+        flash(_("Audio file path not available."), category="error")
+        abort(404)
+
+    # 3. Validate od_path does not contain traversal
+    if ".." in od_path or od_path.startswith("/"):
+        flash(_("Invalid audio file path."), category="error")
+        abort(404)
+
+    # 4. Compute OpenDrive remote path
+    bucket = 1 if book_id < 100 else (book_id // 100) * 100
+    remote_path = f"calibre-books-v2/{bucket}/{book_id}.m4b"
+
+    # 5. Fetch file from OpenDrive using rclone
+    import tempfile
+    import os
+    from flask import send_file
+
+    dest_dir = tempfile.mkdtemp(prefix="aubooks_audio_")
+    local_path = os.path.join(dest_dir, "audiobook.m4b")
+
+    try:
+        result = subprocess.run(
+            [
+                "rclone",
+                "copyto",
+                f"opendrive:{remote_path}",
+                local_path,
+                "--no-traverse",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "not found" in stderr.lower() or "error 404" in stderr.lower():
+                flash(_("Audio file not found on OpenDrive."), category="error")
+                abort(404)
+            flash(_("Failed to download audio from OpenDrive."), category="error")
+            abort(500)
+
+        # 6. Verify file exists and is non-empty
+        if not os.path.isfile(local_path) or os.path.getsize(local_path) == 0:
+            flash(_("Downloaded file is empty or missing."), category="error")
+            abort(500)
+
+        # 7. Serve file as download with proper headers
+        filename = od_path.split("/")[-1]  # e.g., vladislav-yurevich-dorofeev-kladbishche-cheloveka.m4b
+        response = send_file(
+            local_path,
+            mimetype="audio/mp4",
+            as_attachment=True,
+            download_name=filename,
+        )
+
+        # 8. Clean up temp file after response
+        @response.call_on_close
+        def cleanup():
+            try:
+                os.unlink(local_path)
+            except OSError:
+                pass
+            try:
+                os.rmdir(dest_dir)
+            except OSError:
+                pass
+
+        return response
+
+    except Exception as e:
+        flash(_("Error downloading audio: {}").format(str(e)), category="error")
+        abort(500)
+    finally:
+        # Clean up temp dir if not already cleaned
+        import shutil
+        try:
+            shutil.rmtree(dest_dir, ignore_errors=True)
+        except:
+            pass

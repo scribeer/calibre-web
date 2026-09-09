@@ -25,7 +25,7 @@ class TestComputeOpendrivePath(unittest.TestCase):
         self.assertEqual(compute_opendrive_path(1, "FB2"), "calibre-books-v2/1/1.fb2")
 
     def test_book_99(self):
-        self.assertEqual(compute_opendrive_path(99, "FB2"), "calibre-books-v2/99/99.fb2")
+        self.assertEqual(compute_opendrive_path(99, "FB2"), "calibre-books-v2/1/99.fb2")
 
     def test_book_100(self):
         self.assertEqual(compute_opendrive_path(100, "FB2"), "calibre-books-v2/100/100.fb2")
