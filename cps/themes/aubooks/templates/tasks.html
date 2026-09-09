@@ -94,7 +94,7 @@
   function loadTtsJobs() {
     $.ajax({
       method: 'get',
-      url: '/ajax/tts-jobs',
+      url: '{{ url_for("tasks.get_tts_jobs_json") }}',
       async: true,
       timeout: 5000,
       success: function(data) {

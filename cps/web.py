@@ -1840,14 +1840,18 @@ def get_audio_status_json(book_id):
 
     Used by detail page polling to update status without page reload.
     """
-    from .aubooks_audio import get_audio_status, get_audio_record
+    if calibre_db.get_filtered_book(book_id, allow_show_archived=True) is None:
+        abort(404)
+
+    from .aubooks_audio import get_audio_status
 
     status = get_audio_status(book_id)
     result = {"status": status, "download_url": None, "generate_url": None}
 
-    if status == "ready":
+    if status == "ready" and current_user.role_download():
         result["download_url"] = url_for("web.download_audiobook", book_id=book_id)
-    elif status in ("not_available", "failed"):
+    elif (status in ("not_available", "failed")
+          and current_user.is_authenticated and current_user.role_tts()):
         result["generate_url"] = url_for("web.generate_audio", book_id=book_id)
 
     return jsonify(result)

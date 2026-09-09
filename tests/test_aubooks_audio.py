@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "aubooks"))
@@ -330,6 +331,71 @@ class TestAudioStatusEndpoint(unittest.TestCase):
             self.assertEqual(set(data.keys()), {"status", "download_url", "generate_url"})
 
 
+class TestAudioStatusAccess(unittest.TestCase):
+    """Test access and role checks on the production audio status endpoint."""
+
+    @classmethod
+    def setUpClass(cls):
+        import cps
+        cps.cli_param.gd_path = "/home/feninf/calibre-web-dev-data/gdrive.db"
+        from cps import web
+        cls.web = web
+
+        import flask
+        cls.app = flask.Flask(__name__)
+        cls.app.register_blueprint(web.web)
+
+    @staticmethod
+    def _user(tts=False, download=False, authenticated=True):
+        return SimpleNamespace(
+            is_authenticated=authenticated,
+            role_tts=lambda: tts,
+            role_download=lambda: download,
+        )
+
+    def _request(self, status, user, visible=True):
+        with self.app.test_request_context("/ajax/audio-status/100"):
+            with patch.object(self.web.calibre_db, "get_filtered_book",
+                              return_value=object() if visible else None), \
+                    patch.object(self.web, "current_user", user), \
+                    patch("cps.aubooks_audio.get_audio_status", return_value=status):
+                return self.web.get_audio_status_json.__wrapped__(100)
+
+    def test_accessible_book_returns_normal_json(self):
+        response = self._request("queued", self._user())
+        self.assertEqual(response.get_json(), {
+            "status": "queued", "download_url": None, "generate_url": None,
+        })
+
+    def test_inaccessible_book_returns_404(self):
+        from werkzeug.exceptions import NotFound
+        with self.assertRaises(NotFound):
+            self._request("ready", self._user(tts=True, download=True), visible=False)
+
+    def test_hidden_book_status_cannot_be_probed(self):
+        from werkzeug.exceptions import NotFound
+        with self.assertRaises(NotFound):
+            self._request("not_available", self._user(tts=True), visible=False)
+
+    def test_user_without_tts_role_gets_no_generate_url(self):
+        response = self._request("failed", self._user(tts=False))
+        self.assertIsNone(response.get_json()["generate_url"])
+
+    def test_user_with_tts_role_gets_generate_url(self):
+        response = self._request("failed", self._user(tts=True))
+        self.assertEqual(response.get_json()["generate_url"], "/books/100/generate-audio")
+
+    def test_anonymous_user_gets_no_generate_url(self):
+        response = self._request("not_available", self._user(tts=True, authenticated=False))
+        self.assertIsNone(response.get_json()["generate_url"])
+
+    def test_download_url_requires_download_role(self):
+        denied = self._request("ready", self._user(download=False)).get_json()
+        allowed = self._request("ready", self._user(download=True)).get_json()
+        self.assertIsNone(denied["download_url"])
+        self.assertEqual(allowed["download_url"], "/books/100/audio/download")
+
+
 class TestAudioStatusTemplate(unittest.TestCase):
     """Test template rendering with audio status."""
 
@@ -367,6 +433,20 @@ class TestAudioStatusTemplate(unittest.TestCase):
         self.assertIn("ajax/audio-status", content)
         self.assertIn("setInterval", content)
         self.assertIn("data-csrf", content)
+
+    def test_polling_only_builds_generation_controls_from_server_url(self):
+        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
+        content = template_path.read_text()
+        self.assertGreaterEqual(content.count("if (data.generate_url)"), 2)
+        self.assertIn("form.action = data.generate_url", content)
+        self.assertIn("form2.action = data.generate_url", content)
+
+    def test_initial_generation_controls_require_authenticated_tts_role(self):
+        template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
+        content = template_path.read_text()
+        self.assertGreaterEqual(
+            content.count("current_user.is_authenticated and current_user.role_tts()"), 2
+        )
 
     def test_template_has_container_id(self):
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
@@ -582,7 +662,7 @@ class TestTtsJobsTemplate(unittest.TestCase):
     def test_has_tts_table(self):
         content = self._read()
         self.assertIn("tts-table", content)
-        self.assertIn("ajax/tts-jobs", content)
+        self.assertIn('url_for("tasks.get_tts_jobs_json")', content)
 
     def test_has_russian_labels(self):
         content = self._read()
@@ -635,6 +715,89 @@ class TestTtsJobsTemplate(unittest.TestCase):
     def test_extends_layout(self):
         content = self._read()
         self.assertIn('extends theme("layout.html")', content)
+
+
+class TestTtsJobsEndpointSecurity(unittest.TestCase):
+    """Test visibility filtering and safe output of the production TTS jobs endpoint."""
+
+    @classmethod
+    def setUpClass(cls):
+        import cps
+        cps.cli_param.gd_path = "/home/feninf/calibre-web-dev-data/gdrive.db"
+        from cps import tasks_status, web
+        cls.tasks_status = tasks_status
+
+        import flask
+        cls.app = flask.Flask(__name__)
+        cls.app.register_blueprint(web.web)
+        cls.app.register_blueprint(tasks_status.tasks)
+
+    @staticmethod
+    def _row(book_id, status="failed", error="/home/private token=secret"):
+        return {
+            "book_id": book_id,
+            "status": status,
+            "filename": "test.m4b",
+            "filesize": 1024,
+            "duration": 60.0,
+            "error": error,
+            "created_at": "2026-09-09T10:00:00+00:00",
+            "updated_at": "2026-09-09T10:01:00+00:00",
+            "opendrive_path": "Audiobooks/private/test.m4b",
+            "sha256": "secret-hash",
+        }
+
+    def _request(self, rows, books, can_download=True):
+        query = MagicMock()
+        query.options.return_value = query
+        query.filter.return_value = query
+        query.all.return_value = books
+        fake_db = SimpleNamespace(
+            session=SimpleNamespace(query=MagicMock(return_value=query)),
+            common_filters=MagicMock(return_value=object()),
+        )
+        user = SimpleNamespace(role_download=lambda: can_download)
+        with self.app.test_request_context("/ajax/tts-jobs"):
+            with patch.object(self.tasks_status, "calibre_db", fake_db), \
+                    patch.object(self.tasks_status, "current_user", user), \
+                    patch("cps.aubooks_audio.get_audio_jobs", return_value=rows):
+                response = self.tasks_status.get_tts_jobs_json.__wrapped__()
+        fake_db.common_filters.assert_called_once_with(allow_show_archived=True)
+        return response.get_json()
+
+    def test_accessible_job_is_included(self):
+        author = SimpleNamespace(name="Автор")
+        book = SimpleNamespace(id=1, title="Книга", authors=[author])
+        data = self._request([self._row(1)], [book])
+        self.assertEqual(data[0]["book_id"], 1)
+        self.assertEqual(data[0]["title"], "Книга")
+
+    def test_inaccessible_and_missing_books_are_excluded(self):
+        visible = SimpleNamespace(id=1, title="Visible", authors=[])
+        rows = [self._row(1), self._row(2), self._row(999)]
+        data = self._request(rows, [visible])
+        self.assertEqual([item["book_id"] for item in data], [1])
+
+    def test_raw_error_and_internal_fields_are_not_returned(self):
+        book = SimpleNamespace(id=1, title="Книга", authors=[])
+        data = self._request([self._row(1)], [book])[0]
+        serialized = str(data)
+        self.assertEqual(data["error"], "Ошибка генерации аудиокниги")
+        self.assertNotIn("/home/private", serialized)
+        self.assertNotIn("token=secret", serialized)
+        self.assertNotIn("opendrive_path", data)
+        self.assertNotIn("sha256", data)
+
+    def test_ready_download_url_requires_permission(self):
+        book = SimpleNamespace(id=1, title="Книга", authors=[])
+        row = self._row(1, status="ready", error=None)
+        denied = self._request([row], [book], can_download=False)[0]
+        allowed = self._request([row], [book], can_download=True)[0]
+        self.assertIsNone(denied["download_url"])
+        self.assertEqual(allowed["download_url"], "/books/1/audio/download")
+
+    def test_endpoint_keeps_login_required_decorator(self):
+        self.assertTrue(hasattr(self.tasks_status.get_tts_jobs_json, "__wrapped__"))
 
 
 if __name__ == "__main__":

@@ -262,9 +262,15 @@
                              data-csrf="{{ csrf_token() }}"
                              role="group" aria-label="{{_('Audio book status')}}">
                             {% if aubooks_audio_status == 'ready' %}
+                                {% if current_user.role_download() %}
                                 <a class="btn btn-success" href="{{ url_for('web.download_audiobook', book_id=entry.id) }}" style="display:inline">
                                     <span class="glyphicon glyphicon-download" aria-hidden="true"></span> {{ _('Download audiobook') }}
                                 </a>
+                                {% else %}
+                                <button type="button" class="btn btn-default" disabled aria-disabled="true">
+                                    {{ _('Аудиокнига готова') }}
+                                </button>
+                                {% endif %}
                             {% elif aubooks_audio_status == 'queued' %}
                                 <button type="button" class="btn btn-default" disabled
                                         aria-disabled="true">
@@ -276,14 +282,20 @@
                                     <span class="glyphicon glyphicon-cog" aria-hidden="true"></span> {{ _('Generating audio…') }}
                                 </button>
                             {% elif aubooks_audio_status == 'failed' %}
+                                {% if current_user.is_authenticated and current_user.role_tts() %}
                                 <form method="POST" action="{{ url_for('web.generate_audio', book_id=entry.id) }}" style="display:inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-warning">
                                         <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> {{ _('Retry audio') }}
                                     </button>
                                 </form>
+                                {% else %}
+                                <button type="button" class="btn btn-default" disabled aria-disabled="true">
+                                    {{ _('Ошибка генерации') }}
+                                </button>
+                                {% endif %}
                             {% else %}
-                                {% if current_user.role_tts() %}
+                                {% if current_user.is_authenticated and current_user.role_tts() %}
                                 <form method="POST" action="{{ url_for('web.generate_audio', book_id=entry.id) }}" style="display:inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-default">
@@ -401,60 +413,82 @@
       if (s === 'ready') {
         clearInterval(interval);
         el.innerHTML = '';
-        var a = document.createElement('a');
-        a.className = 'btn btn-success';
-        a.href = data.download_url;
-        a.style.display = 'inline';
-        var sp = document.createElement('span');
-        sp.className = 'glyphicon glyphicon-download';
-        sp.setAttribute('aria-hidden', 'true');
-        a.appendChild(sp);
-        a.appendChild(document.createTextNode(' {{ _("Скачать аудиокнигу") }}'));
-        el.appendChild(a);
+        if (data.download_url) {
+          var a = document.createElement('a');
+          a.className = 'btn btn-success';
+          a.href = data.download_url;
+          a.style.display = 'inline';
+          var sp = document.createElement('span');
+          sp.className = 'glyphicon glyphicon-download';
+          sp.setAttribute('aria-hidden', 'true');
+          a.appendChild(sp);
+          a.appendChild(document.createTextNode(' {{ _("Скачать аудиокнигу") }}'));
+          el.appendChild(a);
+        } else {
+          var ready = document.createElement('button');
+          ready.type = 'button';
+          ready.className = 'btn btn-default';
+          ready.disabled = true;
+          ready.setAttribute('aria-disabled', 'true');
+          ready.textContent = '{{ _("Аудиокнига готова") }}';
+          el.appendChild(ready);
+        }
       } else if (s === 'failed') {
         clearInterval(interval);
         el.innerHTML = '';
-        var form = document.createElement('form');
-        form.method = 'POST';
-        form.action = data.generate_url;
-        form.style.display = 'inline';
-        var inp = document.createElement('input');
-        inp.type = 'hidden';
-        inp.name = 'csrf_token';
-        inp.value = el.getAttribute('data-csrf');
-        form.appendChild(inp);
-        var btn = document.createElement('button');
-        btn.type = 'submit';
-        btn.className = 'btn btn-warning';
-        var sp2 = document.createElement('span');
-        sp2.className = 'glyphicon glyphicon-refresh';
-        sp2.setAttribute('aria-hidden', 'true');
-        btn.appendChild(sp2);
-        btn.appendChild(document.createTextNode(' {{ _("Озвучить повторно") }}'));
-        form.appendChild(btn);
-        el.appendChild(form);
+        if (data.generate_url) {
+          var form = document.createElement('form');
+          form.method = 'POST';
+          form.action = data.generate_url;
+          form.style.display = 'inline';
+          var inp = document.createElement('input');
+          inp.type = 'hidden';
+          inp.name = 'csrf_token';
+          inp.value = el.getAttribute('data-csrf');
+          form.appendChild(inp);
+          var btn = document.createElement('button');
+          btn.type = 'submit';
+          btn.className = 'btn btn-warning';
+          var sp2 = document.createElement('span');
+          sp2.className = 'glyphicon glyphicon-refresh';
+          sp2.setAttribute('aria-hidden', 'true');
+          btn.appendChild(sp2);
+          btn.appendChild(document.createTextNode(' {{ _("Озвучить повторно") }}'));
+          form.appendChild(btn);
+          el.appendChild(form);
+        } else {
+          var failed = document.createElement('button');
+          failed.type = 'button';
+          failed.className = 'btn btn-default';
+          failed.disabled = true;
+          failed.setAttribute('aria-disabled', 'true');
+          failed.textContent = '{{ _("Ошибка генерации") }}';
+          el.appendChild(failed);
+        }
       } else if (s === 'not_available') {
         clearInterval(interval);
         el.innerHTML = '';
-        var form2 = document.createElement('form');
-        form2.method = 'POST';
-        form2.action = data.generate_url;
-        form2.style.display = 'inline';
-        var inp2 = document.createElement('input');
-        inp2.type = 'hidden';
-        inp2.name = 'csrf_token';
-        inp2.value = el.getAttribute('data-csrf');
-        form2.appendChild(inp2);
-        var btn2 = document.createElement('button');
-        btn2.type = 'submit';
-        btn2.className = 'btn btn-default';
-        var sp3 = document.createElement('span');
-        sp3.className = 'glyphicon glyphicon-music';
-        sp3.setAttribute('aria-hidden', 'true');
-        btn2.appendChild(sp3);
-        btn2.appendChild(document.createTextNode(' {{ _("Озвучить") }}'));
-        form2.appendChild(btn2);
-        el.appendChild(form2);
+        if (data.generate_url) {
+          var form2 = document.createElement('form');
+          form2.method = 'POST';
+          form2.action = data.generate_url;
+          form2.style.display = 'inline';
+          var inp2 = document.createElement('input');
+          inp2.type = 'hidden';
+          inp2.name = 'csrf_token';
+          inp2.value = el.getAttribute('data-csrf');
+          form2.appendChild(inp2);
+          var btn2 = document.createElement('button');
+          btn2.type = 'submit';
+          btn2.className = 'btn btn-default';
+          var sp3 = document.createElement('span');
+          sp3.className = 'glyphicon glyphicon-music';
+          sp3.setAttribute('aria-hidden', 'true');
+          btn2.appendChild(sp3);
+          btn2.appendChild(document.createTextNode(' {{ _("Озвучить") }}'));
+          form2.appendChild(btn2);
+          el.appendChild(form2);
+        }
       } else if (s === 'queued') {
         el.innerHTML = '';
         var btn3 = document.createElement('button');

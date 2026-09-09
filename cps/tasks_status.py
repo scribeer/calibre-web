@@ -16,7 +16,8 @@
 
 from markupsafe import escape
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, url_for
+from sqlalchemy.orm import selectinload
 from .cw_login import current_user
 from flask_babel import gettext as _
 from flask_babel import format_datetime
@@ -50,11 +51,15 @@ def get_tts_jobs_json():
     if not rows:
         return jsonify([])
 
-    # Batch-fetch book metadata for all book_ids
+    # Batch-fetch only books visible to the current user.
     book_ids = [r["book_id"] for r in rows]
     books_map = {}
     try:
-        books = calibre_db.session.query(db.Books).filter(db.Books.id.in_(book_ids)).all()
+        books = (calibre_db.session.query(db.Books)
+                 .options(selectinload(db.Books.authors))
+                 .filter(db.Books.id.in_(book_ids))
+                 .filter(calibre_db.common_filters(allow_show_archived=True))
+                 .all())
         for b in books:
             authors = ", ".join(a.name for a in b.authors) if b.authors else ""
             books_map[b.id] = {"title": b.title, "author": authors}
@@ -64,7 +69,9 @@ def get_tts_jobs_json():
     result = []
     for r in rows:
         bid = r["book_id"]
-        meta = books_map.get(bid, {"title": f"Book #{bid}", "author": ""})
+        meta = books_map.get(bid)
+        if meta is None:
+            continue
         status = r["status"]
         item = {
             "book_id": bid,
@@ -76,9 +83,10 @@ def get_tts_jobs_json():
             "updated_at": r["updated_at"],
             "filesize": r["filesize"],
             "duration": r["duration"],
-            "error": r["error"],
-            "book_url": f"/book/{bid}",
-            "download_url": f"/books/{bid}/audio/download" if status == "ready" else None,
+            "error": "Ошибка генерации аудиокниги" if status == "failed" else None,
+            "book_url": url_for("web.show_book", book_id=bid),
+            "download_url": (url_for("web.download_audiobook", book_id=bid)
+                             if status == "ready" and current_user.role_download() else None),
         }
         result.append(item)
 
