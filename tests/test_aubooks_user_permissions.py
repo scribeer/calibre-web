@@ -1,5 +1,6 @@
 """Regression tests for the AU-Books registered-user permission policy."""
 
+import json
 import unittest
 from functools import wraps
 from pathlib import Path
@@ -115,6 +116,26 @@ class TestAubooksUserPermissions(unittest.TestCase):
         self.assertEqual(response.status_code, 303)
         queue.assert_called_once_with(10, 7)
         user.role_tts.assert_not_called()
+
+    def test_generate_audio_route_matches_real_queue_book_contract(self):
+        user = self._user(True, user_id=7)
+        response_body = MagicMock()
+        response_body.read.return_value = json.dumps(
+            {"ok": True, "book_id": 10, "job_id": "JOB-10"}
+        ).encode("utf-8")
+        response_body.__enter__.return_value = response_body
+        with self.app.test_request_context("/books/10/generate-audio", method="POST"), \
+                patch.object(self.web, "current_user", user), \
+                patch.object(self.permissions.config, "config_theme", 3, create=True), \
+                patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
+                patch("cps.aubooks_audio.get_audio_status", return_value="not_available"), \
+                patch("urllib.request.urlopen", return_value=response_body) as open_url, \
+                patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
+            response = self.web.generate_audio.__wrapped__(10)
+        self.assertEqual(response.status_code, 303)
+        request = open_url.call_args.args[0]
+        payload = json.loads(request.data)
+        self.assertEqual(payload, {"book_id": 10, "requested_by_user_id": 7})
 
     def test_cancelled_audio_can_be_regenerated_with_server_owner(self):
         user = self._user(True, user_id=12)

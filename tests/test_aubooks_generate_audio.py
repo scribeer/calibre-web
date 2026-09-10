@@ -63,6 +63,12 @@ class TestTransportAbstraction(unittest.TestCase):
         self.assertIn('"book_id": book_id', source)
         self.assertIn('"requested_by_user_id": requested_by_user_id', source)
 
+    def test_queue_book_signature_requires_book_and_owner(self):
+        import inspect
+        from cps.aubooks_tts import queue_book
+        params = list(inspect.signature(queue_book).parameters)
+        self.assertEqual(params, ["book_id", "requested_by_user_id"])
+
     def test_json_content_type_is_set(self):
         source = read_tts_source()
         self.assertIn('"Content-Type": "application/json"', source)
