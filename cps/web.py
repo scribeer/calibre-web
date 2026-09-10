@@ -1864,7 +1864,7 @@ def get_audio_status_json(book_id):
 
     if status == "ready" and current_user.is_authenticated and can_download(current_user):
         result["download_url"] = url_for("web.download_audiobook", book_id=book_id)
-    elif (status in ("not_available", "failed")
+    elif (status in ("not_available", "failed", "cancelled")
           and current_user.is_authenticated and can_generate_tts(current_user)):
         result["generate_url"] = url_for("web.generate_audio", book_id=book_id)
 
@@ -1895,7 +1895,7 @@ def generate_audio(book_id):
         flash(_("Book not found."), category="error")
         abort(404)
 
-    # 3. Current audio status — only not_available or failed allowed
+    # 3. Current audio status — terminal failures and cancellations can be retried.
     from .aubooks_audio import get_audio_status
     audio_status = get_audio_status(book_id)
 
@@ -1909,7 +1909,7 @@ def generate_audio(book_id):
 
     # 4. Queue via transport layer (no local source lookup)
     from .aubooks_tts import queue_book
-    result = queue_book(book_id)
+    result = queue_book(book_id, int(current_user.id))
 
     if result.success:
         log.info("TTS job queued for book %d: %s", book_id, result.job_id)
@@ -1917,9 +1917,10 @@ def generate_audio(book_id):
     else:
         log.warning("TTS queue failed for book %d (exit %d): %s",
                      book_id, result.exit_code, result.error_message)
-        flash(_(result.error_message), category="error")
+        flash(_("Unable to start audio generation. Please try again later."), category="error")
 
     return redirect(url_for("web.show_book", book_id=book_id), code=303)
+
 
 # ---------------------------------------------------------------------------
 # AU-Books: Download ready audiobook from OpenDrive

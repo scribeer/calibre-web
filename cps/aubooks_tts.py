@@ -18,6 +18,30 @@ import urllib.request
 log = logging.getLogger(__name__)
 
 _DEFAULT_DISPATCH_URL = "http://127.0.0.1:18900"
+_INVALID_RESPONSE = "Audio generation service returned an invalid response."
+_QUEUE_REJECTED = "Audio generation service rejected the request."
+
+
+def _read_json_response(response, operation):
+    try:
+        raw = response.read().decode("utf-8")
+    except Exception as exc:
+        log.warning("Invalid dispatcher response encoding for %s: %s", operation, exc)
+        return None
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        log.warning("Invalid dispatcher JSON for %s: %r", operation, raw)
+        return None
+    if not isinstance(data, dict):
+        log.warning("Invalid dispatcher response type for %s: %r", operation, data)
+        return None
+    return data
+
+
+def _response_code(data, default):
+    code = data.get("code", default)
+    return code if isinstance(code, int) and not isinstance(code, bool) else default
 
 
 class QueueResult:
@@ -35,26 +59,28 @@ class QueueResult:
         return f"QueueResult(success={self.success}, exit_code={self.exit_code}, error={self.error_message!r})"
 
 
-def queue_book(book_id: int, voice: int = 1, publish: bool = True,
-               remote_path: str | None = None) -> QueueResult:
+def queue_book(book_id: int, requested_by_user_id: int) -> QueueResult:
     """Submit a book for TTS processing via HTTP dispatcher.
 
     Args:
         book_id: Calibre book ID.
-        voice: Voice choice (1=female, 2=male). Accepted for API
-               compatibility but dispatcher always uses voice=1.
-        publish: Whether to publish to OpenDrive after TTS. Accepted for
-                 API compatibility but dispatcher always publishes.
-        remote_path: Ignored (kept for backward compat). The dispatcher
-                     URL is controlled by TTS_DISPATCH_URL env var.
+        requested_by_user_id: Calibre-Web user ID from the authenticated
+                              server-side session.
 
     Returns:
         QueueResult with success/error information.
     """
+    if (not isinstance(book_id, int) or isinstance(book_id, bool)
+            or not isinstance(requested_by_user_id, int) or isinstance(requested_by_user_id, bool)):
+        return QueueResult(False, 1, _INVALID_RESPONSE)
+
     dispatch_url = os.environ.get("TTS_DISPATCH_URL", _DEFAULT_DISPATCH_URL)
     url = f"{dispatch_url}/queue"
 
-    payload = json.dumps({"book_id": book_id}).encode("utf-8")
+    payload = json.dumps({
+        "book_id": book_id,
+        "requested_by_user_id": requested_by_user_id,
+    }).encode("utf-8")
     req = urllib.request.Request(
         url,
         data=payload,
@@ -64,18 +90,12 @@ def queue_book(book_id: int, voice: int = 1, publish: bool = True,
 
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            data = _read_json_response(resp, "queue")
     except urllib.error.HTTPError as exc:
-        try:
-            data = json.loads(exc.read().decode("utf-8"))
-        except Exception:
-            return QueueResult(False, exc.code, f"Dispatcher error (HTTP {exc.code}).")
-        # HTTPError with valid JSON body
-        return QueueResult(
-            False,
-            data.get("code", exc.code),
-            data.get("error", f"Dispatcher error (HTTP {exc.code})."),
-        )
+        data = _read_json_response(exc, "queue HTTP error")
+        if data is not None:
+            log.warning("Dispatcher rejected queue request: %r", data)
+        return QueueResult(False, _response_code(data, exc.code) if data else exc.code, _QUEUE_REJECTED)
     except urllib.error.URLError as exc:
         log.error("Dispatcher unavailable: %s", exc)
         return QueueResult(False, 1, "Audio generation service is unavailable.")
@@ -86,9 +106,17 @@ def queue_book(book_id: int, voice: int = 1, publish: bool = True,
         log.error("Dispatcher communication failed for book %d: %s", book_id, exc)
         return QueueResult(False, 1, "Audio generation service is unavailable.")
 
-    if data.get("ok"):
+    if data is None:
+        return QueueResult(False, 1, _INVALID_RESPONSE)
+    if data.get("ok") is True:
         job_id = data.get("job_id", "")
+        if not isinstance(job_id, str) or not job_id:
+            log.warning("Dispatcher queue success omitted a valid job_id: %r", data)
+            return QueueResult(False, 1, _INVALID_RESPONSE)
         log.info("TTS job queued for book %d: %s", book_id, job_id)
         return QueueResult(True, 0, "", job_id)
-
-    return QueueResult(False, data.get("code", 1), data.get("error", "Unknown error."))
+    if data.get("ok") is False:
+        log.warning("Dispatcher rejected queue request: %r", data)
+        return QueueResult(False, _response_code(data, 1), _QUEUE_REJECTED)
+    log.warning("Dispatcher queue response omitted a boolean ok field: %r", data)
+    return QueueResult(False, 1, _INVALID_RESPONSE)

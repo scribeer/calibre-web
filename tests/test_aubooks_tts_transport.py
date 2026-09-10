@@ -2,7 +2,7 @@
 
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 import time
@@ -16,10 +16,13 @@ from cps.aubooks_tts import queue_book, QueueResult
 class _MockDispatcher(BaseHTTPRequestHandler):
     """Mock dispatcher that returns predefined responses based on book_id."""
 
+    last_body = None
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
         body = json.loads(raw)
+        type(self).last_body = body
         book_id = body.get("book_id")
 
         if book_id == 99:
@@ -87,23 +90,23 @@ class TestQueueBookHTTP(unittest.TestCase):
         self.server.shutdown()
 
     def test_success(self):
-        result = queue_book(42)
+        result = queue_book(42, 7)
         self.assertTrue(result.success)
         self.assertEqual(result.job_id, "MOCK_JOB_42")
 
     def test_duplicate_409(self):
-        result = queue_book(99)
+        result = queue_book(99, 7)
         self.assertFalse(result.success)
         self.assertEqual(result.exit_code, 409)
-        self.assertIn("queued", result.error_message.lower())
+        self.assertEqual(result.error_message, "Audio generation service rejected the request.")
 
     def test_not_found_404(self):
-        result = queue_book(404)
+        result = queue_book(404, 7)
         self.assertFalse(result.success)
         self.assertEqual(result.exit_code, 404)
 
     def test_pipeline_error(self):
-        result = queue_book(500)
+        result = queue_book(500, 7)
         self.assertFalse(result.success)
         self.assertEqual(result.exit_code, 5)
 
@@ -111,9 +114,16 @@ class TestQueueBookHTTP(unittest.TestCase):
 class TestQueueBookErrors(unittest.TestCase):
     """Test queue_book error handling."""
 
+    @staticmethod
+    def _response(body):
+        response = MagicMock()
+        response.read.return_value = json.dumps(body).encode("utf-8")
+        response.__enter__.return_value = response
+        return response
+
     def test_dispatcher_unavailable(self):
         with patch.dict("os.environ", {"TTS_DISPATCH_URL": "http://127.0.0.1:1"}):
-            result = queue_book(1)
+            result = queue_book(1, 7)
         self.assertFalse(result.success)
         self.assertIn("unavailable", result.error_message.lower())
 
@@ -121,7 +131,7 @@ class TestQueueBookErrors(unittest.TestCase):
         server, port = _start_mock(_GarbageDispatcher)
         try:
             with patch.dict("os.environ", {"TTS_DISPATCH_URL": f"http://127.0.0.1:{port}"}):
-                result = queue_book(1)
+                result = queue_book(1, 7)
             self.assertFalse(result.success)
         finally:
             server.shutdown()
@@ -130,7 +140,7 @@ class TestQueueBookErrors(unittest.TestCase):
         server, port = _start_mock(_SlowDispatcher)
         try:
             with patch.dict("os.environ", {"TTS_DISPATCH_URL": f"http://127.0.0.1:{port}"}):
-                result = queue_book(1)
+                result = queue_book(1, 7)
             self.assertFalse(result.success)
         finally:
             server.shutdown()
@@ -143,15 +153,32 @@ class TestQueueBookErrors(unittest.TestCase):
         self.assertEqual(r.job_id, "job_1")
         self.assertIn("success=True", repr(r))
 
-    def test_voice_and_publish_params_accepted(self):
-        """voice/publish params are accepted but ignored (dispatcher controls them)."""
+    def test_queue_payload_contains_server_owner(self):
         server, port = _start_mock(_MockDispatcher)
         try:
             with patch.dict("os.environ", {"TTS_DISPATCH_URL": f"http://127.0.0.1:{port}"}):
-                result = queue_book(42, voice=2, publish=False)
+                result = queue_book(42, 7)
             self.assertTrue(result.success)
+            self.assertEqual(_MockDispatcher.last_body, {
+                "book_id": 42,
+                "requested_by_user_id": 7,
+            })
         finally:
             server.shutdown()
+
+    def test_queue_rejects_non_object_and_missing_job_id(self):
+        for body in ([], {"ok": True}, {"ok": "true", "job_id": "job-1"}):
+            with self.subTest(body=body), \
+                    patch("urllib.request.urlopen", return_value=self._response(body)):
+                result = queue_book(1, 7)
+                self.assertFalse(result.success)
+                self.assertIn("invalid response", result.error_message.lower())
+
+    def test_transport_rejects_invalid_identifier_types_without_request(self):
+        with patch("urllib.request.urlopen") as open_url:
+            queue_result = queue_book("1", 7)
+        self.assertFalse(queue_result.success)
+        open_url.assert_not_called()
 
 
 if __name__ == "__main__":
