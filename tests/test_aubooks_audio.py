@@ -725,23 +725,21 @@ class TestTtsJobsTemplate(unittest.TestCase):
         self.assertIn("\\u041e\\u0442\\u043a\\u0440\\u044b\\u0442\\u044c", content)
         self.assertIn("r.action = actionFormatter(null, r)", content)
 
-    def test_cancel_action_is_csrf_post_and_permission_gated(self):
+    def test_no_cancel_button(self):
         content = self._read()
-        self.assertIn("row.can_cancel && row.cancel_url", content)
-        self.assertIn('<form method="POST"', content)
-        self.assertIn('name="csrf_token"', content)
-        self.assertIn("Отменить", content)
+        self.assertNotIn("can_cancel", content)
+        self.assertNotIn("cancel_url", content)
+        self.assertNotIn("tts-cancel", content)
+        self.assertNotIn("Отменить озвучивание этой книги?", content)
+        self.assertNotIn("X-Requested-With", content)
+        self.assertNotIn("tts-cancel-error", content)
+        self.assertNotIn("Отменить", content)
 
-    def test_cancel_uses_confirm_and_ajax_without_full_reload(self):
+    def test_action_keeps_download_and_open_actions(self):
         content = self._read()
-        self.assertIn("tts-cancel-form", content)
-        self.assertIn("Отменить озвучивание этой книги?", content)
-        self.assertIn("e.preventDefault()", content)
-        self.assertIn("X-Requested-With", content)
-        self.assertIn("btn.prop('disabled', true)", content)
-        self.assertIn("btn.prop('disabled', false)", content)
+        self.assertIn("row.status === 'ready' && row.download_url", content)
+        self.assertIn("row.status === 'failed' || row.status === 'cancelled'", content)
         self.assertIn("loadTtsJobs()", content)
-        self.assertIn("tts-cancel-error", content)
 
     def test_has_date_formatting_js(self):
         content = self._read()
@@ -859,41 +857,11 @@ class TestTtsJobsEndpointSecurity(unittest.TestCase):
         self.assertNotIn("requested_by_user_id", data)
         self.assertNotIn("job_id", data)
 
-    def test_owner_gets_cancel_url_for_active_status_only(self):
+    def test_cancellation_fields_are_not_returned(self):
         book = SimpleNamespace(id=1, title="Книга", authors=[])
         active = self._request([self._row(1, status="queued", error=None)], [book])[0]
-        finished = self._request([self._row(1, status="cancelled", error=None)], [book])[0]
-        self.assertTrue(active["can_cancel"])
-        self.assertIn("/cancel", active["cancel_url"])
-        self.assertFalse(finished["can_cancel"])
-        self.assertIsNone(finished["cancel_url"])
-
-    def test_other_user_and_legacy_jobs_have_no_cancel_url(self):
-        book = SimpleNamespace(id=1, title="Книга", authors=[])
-        other = self._row(1, status="processing", error=None)
-        other["requested_by_user_id"] = 99
-        legacy = self._row(1, status="queued", error=None)
-        legacy["requested_by_user_id"] = None
-        for row in (other, legacy):
-            with self.subTest(owner=row["requested_by_user_id"]):
-                data = self._request([row], [book])[0]
-                self.assertFalse(data["can_cancel"])
-                self.assertIsNone(data["cancel_url"])
-
-    def test_admin_gets_cancel_url_for_legacy_active_job(self):
-        book = SimpleNamespace(id=1, title="Книга", authors=[])
-        row = self._row(1, status="queued", error=None)
-        row["requested_by_user_id"] = None
-        data = self._request([row], [book], admin=True)[0]
-        self.assertTrue(data["can_cancel"])
-        self.assertIn("/cancel", data["cancel_url"])
-
-    def test_standard_theme_permission_denial_removes_cancel_url(self):
-        book = SimpleNamespace(id=1, title="Книга", authors=[])
-        row = self._row(1, status="queued", error=None)
-        data = self._request([row], [book], admin=True, theme=0, tts=False)[0]
-        self.assertFalse(data["can_cancel"])
-        self.assertIsNone(data["cancel_url"])
+        self.assertNotIn("can_cancel", active)
+        self.assertNotIn("cancel_url", active)
 
     def test_ready_download_url_is_available_without_separate_role(self):
         book = SimpleNamespace(id=1, title="Книга", authors=[])

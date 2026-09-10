@@ -1922,44 +1922,6 @@ def generate_audio(book_id):
     return redirect(url_for("web.show_book", book_id=book_id), code=303)
 
 
-@web.route("/books/<int:book_id>/audio/jobs/<job_id>/cancel", methods=["POST"])
-@user_login_required
-def cancel_audio_job(book_id, job_id):
-    """Cancel an active TTS job owned by the user, or any job as admin."""
-    if calibre_db.get_filtered_book(book_id, allow_show_archived=True) is None:
-        abort(404)
-    if not can_generate_tts(current_user):
-        abort(403)
-
-    from .aubooks_audio import get_audio_record
-    record = get_audio_record(book_id)
-    if record is None or record.get("job_id") != job_id:
-        abort(404)
-
-    owner_id = record.get("requested_by_user_id")
-    is_owner = owner_id is not None and int(owner_id) == int(current_user.id)
-    if not current_user.role_admin() and not is_owner:
-        abort(403)
-    if record.get("status") not in ("queued", "processing"):
-        abort(409)
-
-    from .aubooks_tts import cancel_job
-    result = cancel_job(job_id)
-    if result.success:
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"ok": True, "status": "cancelled"})
-        flash(_("Audio generation cancelled."), category="success")
-    else:
-        log.warning("TTS cancellation failed for job %s (exit %d): %s",
-                    job_id, result.exit_code, result.error_message)
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            response = jsonify({"ok": False,
-                                "message": _("Unable to cancel audio generation. Please try again later.")})
-            response.status_code = 400
-            return response
-        flash(_("Unable to cancel audio generation. Please try again later."), category="error")
-    return redirect(url_for("tasks.get_tasks_status"), code=303)
-
 # ---------------------------------------------------------------------------
 # AU-Books: Download ready audiobook from OpenDrive
 # ---------------------------------------------------------------------------

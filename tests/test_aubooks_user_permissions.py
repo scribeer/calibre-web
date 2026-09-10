@@ -88,17 +88,6 @@ class TestAubooksUserPermissions(unittest.TestCase):
             )
         queue.assert_not_called()
 
-    def test_guest_tts_cancel_redirects_to_login(self):
-        with patch("cps.aubooks_audio.get_audio_record") as audio_record, \
-                patch("cps.aubooks_tts.cancel_job") as cancel:
-            self._guest_request(
-                self.web.cancel_audio_job,
-                "/books/10/audio/jobs/job-1/cancel",
-                10, "job-1",
-            )
-        audio_record.assert_not_called()
-        cancel.assert_not_called()
-
     def test_normal_user_can_download_ebook_without_download_role(self):
         user = self._user(True, download=False)
         with self.app.test_request_context("/download/10/fb2/10.fb2"), \

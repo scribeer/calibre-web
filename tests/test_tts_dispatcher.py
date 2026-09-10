@@ -66,7 +66,7 @@ class TestValidation(unittest.TestCase):
 
     def test_valid_book_id(self):
         with patch.object(dispatcher_mod, "_dispatch", return_value={"ok": True, "book_id": 42, "job_id": "JOB_42"}):
-            data, status = self._post({"book_id": 42}, self.port)
+            data, status = self._post({"book_id": 42, "requested_by_user_id": 7}, self.port)
         self.assertEqual(status, 200)
         self.assertTrue(data["ok"])
         self.assertEqual(data["book_id"], 42)
@@ -154,7 +154,7 @@ class TestDuplicateCheck(unittest.TestCase):
         conn.commit()
         conn.close()
         with patch.object(dispatcher_mod, "AUDIO_DB", db):
-            data, status = self._post({"book_id": 99})
+            data, status = self._post({"book_id": 99, "requested_by_user_id": 7})
         self.assertEqual(status, 409)
         self.assertFalse(data["ok"])
         self.assertIn("queued", data["error"].lower())
@@ -168,7 +168,7 @@ class TestDuplicateCheck(unittest.TestCase):
         conn.commit()
         conn.close()
         with patch.object(dispatcher_mod, "AUDIO_DB", db):
-            data, status = self._post({"book_id": 99})
+            data, status = self._post({"book_id": 99, "requested_by_user_id": 7})
         self.assertEqual(status, 409)
         db.unlink(missing_ok=True)
 
@@ -180,7 +180,7 @@ class TestDuplicateCheck(unittest.TestCase):
         conn.commit()
         conn.close()
         with patch.object(dispatcher_mod, "AUDIO_DB", db):
-            data, status = self._post({"book_id": 99})
+            data, status = self._post({"book_id": 99, "requested_by_user_id": 7})
         self.assertEqual(status, 409)
         db.unlink(missing_ok=True)
 
@@ -193,7 +193,7 @@ class TestDuplicateCheck(unittest.TestCase):
         conn.close()
         with patch.object(dispatcher_mod, "AUDIO_DB", db), \
              patch.object(dispatcher_mod, "_dispatch", return_value={"ok": True, "book_id": 99, "job_id": "J"}):
-            data, status = self._post({"book_id": 99})
+            data, status = self._post({"book_id": 99, "requested_by_user_id": 7})
         self.assertEqual(status, 200)
         self.assertTrue(data["ok"])
         db.unlink(missing_ok=True)
@@ -243,7 +243,7 @@ class TestDispatchMocked(unittest.TestCase):
         mock_proc = MagicMock(returncode=0, stdout="OK=queued\nJOB=20260905_120000_111\n", stderr="")
         with patch.object(dispatcher_mod, "AUBOOK_REMOTE", "/bin/true"), \
              patch("subprocess.run", return_value=mock_proc):
-            data, status = self._post({"book_id": 123})
+            data, status = self._post({"book_id": 123, "requested_by_user_id": 7})
         self.assertEqual(status, 200)
         self.assertTrue(data["ok"])
         self.assertEqual(data["job_id"], "20260905_120000_111")
@@ -252,21 +252,21 @@ class TestDispatchMocked(unittest.TestCase):
         mock_proc = MagicMock(returncode=4, stdout="", stderr="not found")
         with patch.object(dispatcher_mod, "AUBOOK_REMOTE", "/bin/true"), \
              patch("subprocess.run", return_value=mock_proc):
-            data, status = self._post({"book_id": 999})
-        self.assertEqual(status, 500)
+            data, status = self._post({"book_id": 999, "requested_by_user_id": 7})
+        self.assertEqual(status, 404)
         self.assertFalse(data["ok"])
-        self.assertIn("not found", data["error"].lower())
+        self.assertIn("Book not found", data["error"])
 
     def test_pipeline_not_found(self):
         with patch.object(dispatcher_mod, "AUBOOK_REMOTE", "/nonexistent/path"):
-            data, status = self._post({"book_id": 1})
+            data, status = self._post({"book_id": 1, "requested_by_user_id": 7})
         self.assertEqual(status, 500)
         self.assertFalse(data["ok"])
 
     def test_subprocess_timeout(self):
         with patch.object(dispatcher_mod, "AUBOOK_REMOTE", "/bin/true"), \
              patch("subprocess.run", side_effect=dispatcher_mod.subprocess.TimeoutExpired("cmd", 30)):
-            data, status = self._post({"book_id": 1})
+            data, status = self._post({"book_id": 1, "requested_by_user_id": 7})
         self.assertEqual(status, 500)
         self.assertIn("timed out", data["error"].lower())
 
@@ -275,7 +275,7 @@ class TestDispatchMocked(unittest.TestCase):
         mock_proc = MagicMock(returncode=0, stdout="JOB=test\n", stderr="")
         with patch.object(dispatcher_mod, "AUBOOK_REMOTE", "/bin/true"), \
              patch("subprocess.run", return_value=mock_proc) as mock_run:
-            self._post({"book_id": 1})
+            self._post({"book_id": 1, "requested_by_user_id": 7})
         _, kwargs = mock_run.call_args
         self.assertFalse(kwargs.get("shell", False))
 

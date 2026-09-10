@@ -28,7 +28,7 @@ from .render_template import render_title_template
 from .services.worker import WorkerThread, STAT_WAITING, STAT_FAIL, STAT_STARTED, STAT_FINISH_SUCCESS, STAT_ENDED, \
     STAT_CANCELLED
 from .usermanagement import user_login_required
-from .aubooks_permissions import can_download, can_generate_tts
+from .aubooks_permissions import can_download
 
 tasks = Blueprint('tasks', __name__)
 
@@ -74,11 +74,6 @@ def get_tts_jobs_json():
         if meta is None:
             continue
         status = r["status"]
-        owner_id = r.get("requested_by_user_id")
-        can_cancel = (can_generate_tts(current_user)
-                      and status in ("queued", "processing")
-                      and (current_user.role_admin()
-                           or (owner_id is not None and int(owner_id) == int(current_user.id))))
         item = {
             "book_id": bid,
             "title": meta["title"],
@@ -93,9 +88,6 @@ def get_tts_jobs_json():
             "book_url": url_for("web.show_book", book_id=bid),
             "download_url": (url_for("web.download_audiobook", book_id=bid)
                               if status == "ready" and can_download(current_user) else None),
-            "can_cancel": can_cancel,
-            "cancel_url": (url_for("web.cancel_audio_job", book_id=bid, job_id=r["job_id"])
-                           if can_cancel else None),
         }
         result.append(item)
 
