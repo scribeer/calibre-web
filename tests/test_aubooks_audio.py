@@ -358,6 +358,7 @@ class TestAudioStatusAccess(unittest.TestCase):
             with patch.object(self.web.calibre_db, "get_filtered_book",
                               return_value=object() if visible else None), \
                     patch.object(self.web, "current_user", user), \
+                    patch("cps.aubooks_permissions.config.config_theme", 3, create=True), \
                     patch("cps.aubooks_audio.get_audio_status", return_value=status):
                 return self.web.get_audio_status_json.__wrapped__(100)
 
@@ -377,9 +378,9 @@ class TestAudioStatusAccess(unittest.TestCase):
         with self.assertRaises(NotFound):
             self._request("not_available", self._user(tts=True), visible=False)
 
-    def test_user_without_tts_role_gets_no_generate_url(self):
+    def test_authenticated_user_gets_generate_url_without_tts_role(self):
         response = self._request("failed", self._user(tts=False))
-        self.assertIsNone(response.get_json()["generate_url"])
+        self.assertEqual(response.get_json()["generate_url"], "/books/100/generate-audio")
 
     def test_user_with_tts_role_gets_generate_url(self):
         response = self._request("failed", self._user(tts=True))
@@ -389,10 +390,14 @@ class TestAudioStatusAccess(unittest.TestCase):
         response = self._request("not_available", self._user(tts=True, authenticated=False))
         self.assertIsNone(response.get_json()["generate_url"])
 
-    def test_download_url_requires_download_role(self):
+    def test_anonymous_user_gets_no_download_url(self):
+        response = self._request("ready", self._user(download=True, authenticated=False))
+        self.assertIsNone(response.get_json()["download_url"])
+
+    def test_authenticated_download_url_does_not_require_download_role(self):
         denied = self._request("ready", self._user(download=False)).get_json()
         allowed = self._request("ready", self._user(download=True)).get_json()
-        self.assertIsNone(denied["download_url"])
+        self.assertEqual(denied["download_url"], "/books/100/audio/download")
         self.assertEqual(allowed["download_url"], "/books/100/audio/download")
 
 
@@ -412,7 +417,7 @@ class TestAudioStatusTemplate(unittest.TestCase):
         self.assertIn("audio_status == 'queued'", content)
         self.assertIn("audio_status == 'processing'", content)
         self.assertIn("audio_status == 'failed'", content)
-        self.assertIn("role_tts()", content)
+        self.assertNotIn("role_tts()", content)
 
     def test_template_no_href_hash(self):
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
@@ -441,12 +446,11 @@ class TestAudioStatusTemplate(unittest.TestCase):
         self.assertIn("form.action = data.generate_url", content)
         self.assertIn("form2.action = data.generate_url", content)
 
-    def test_initial_generation_controls_require_authenticated_tts_role(self):
+    def test_initial_generation_controls_require_authentication(self):
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
         content = template_path.read_text()
-        self.assertGreaterEqual(
-            content.count("current_user.is_authenticated and current_user.role_tts()"), 2
-        )
+        self.assertGreaterEqual(content.count("current_user.is_authenticated"), 4)
+        self.assertNotIn("current_user.role_tts()", content)
 
     def test_template_has_container_id(self):
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
@@ -756,10 +760,11 @@ class TestTtsJobsEndpointSecurity(unittest.TestCase):
             session=SimpleNamespace(query=MagicMock(return_value=query)),
             common_filters=MagicMock(return_value=object()),
         )
-        user = SimpleNamespace(role_download=lambda: can_download)
+        user = SimpleNamespace(is_authenticated=True, role_download=lambda: can_download)
         with self.app.test_request_context("/ajax/tts-jobs"):
             with patch.object(self.tasks_status, "calibre_db", fake_db), \
                     patch.object(self.tasks_status, "current_user", user), \
+                    patch("cps.aubooks_permissions.config.config_theme", 3, create=True), \
                     patch("cps.aubooks_audio.get_audio_jobs", return_value=rows):
                 response = self.tasks_status.get_tts_jobs_json.__wrapped__()
         fake_db.common_filters.assert_called_once_with(allow_show_archived=True)
@@ -788,12 +793,12 @@ class TestTtsJobsEndpointSecurity(unittest.TestCase):
         self.assertNotIn("opendrive_path", data)
         self.assertNotIn("sha256", data)
 
-    def test_ready_download_url_requires_permission(self):
+    def test_ready_download_url_is_available_without_separate_role(self):
         book = SimpleNamespace(id=1, title="Книга", authors=[])
         row = self._row(1, status="ready", error=None)
         denied = self._request([row], [book], can_download=False)[0]
         allowed = self._request([row], [book], can_download=True)[0]
-        self.assertIsNone(denied["download_url"])
+        self.assertEqual(denied["download_url"], "/books/1/audio/download")
         self.assertEqual(allowed["download_url"], "/books/1/audio/download")
 
     def test_endpoint_keeps_login_required_decorator(self):

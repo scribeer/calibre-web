@@ -37,6 +37,7 @@ from sqlalchemy.sql.expression import text, func, false, not_, and_, or_
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.sql.functions import coalesce
 from werkzeug.datastructures import Headers
+from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from . import constants, logger, isoLanguages, services, limiter
@@ -60,6 +61,7 @@ from .services.worker import WorkerThread
 from .tasks_status import render_task_status
 from .usermanagement import user_login_required
 from .string_helper import strip_whitespaces
+from .aubooks_permissions import can_download, can_generate_tts, is_aubooks_active
 
 
 feature_support = {
@@ -129,6 +131,18 @@ def download_required(f):
     def inner(*args, **kwargs):
         if current_user.role_download():
             return f(*args, **kwargs)
+        abort(403)
+
+    return inner
+
+
+def aubooks_download_required(f):
+    @wraps(f)
+    def inner(*args, **kwargs):
+        if can_download(current_user):
+            return f(*args, **kwargs)
+        if is_aubooks_active() and not current_user.is_authenticated:
+            return user_login_required(f)(*args, **kwargs)
         abort(403)
 
     return inner
@@ -1350,7 +1364,7 @@ def serve_book(book_id, book_format, anyname):
 @web.route("/download/<int:book_id>/<book_format>", defaults={'anyname': 'None'})
 @web.route("/download/<int:book_id>/<book_format>/<anyname>")
 @login_required_if_no_ano
-@download_required
+@aubooks_download_required
 def download_link(book_id, book_format, anyname):
     if "kindle" in request.headers.get('User-Agent', "").lower():
         client = "kindle"
@@ -1489,7 +1503,7 @@ def handle_login_user(user, remember, message, category):
 
 
 def render_login(username="", password=""):
-    next_url = request.args.get('next', default=url_for("web.index"), type=str)
+    next_url = get_redirect_location(request.args.get('next', type=str), "web.index")
     if url_for("web.logout") == next_url:
         next_url = url_for("web.index")
     return render_title_template('login.html',
@@ -1848,10 +1862,10 @@ def get_audio_status_json(book_id):
     status = get_audio_status(book_id)
     result = {"status": status, "download_url": None, "generate_url": None}
 
-    if status == "ready" and current_user.role_download():
+    if status == "ready" and current_user.is_authenticated and can_download(current_user):
         result["download_url"] = url_for("web.download_audiobook", book_id=book_id)
     elif (status in ("not_available", "failed")
-          and current_user.is_authenticated and current_user.role_tts()):
+          and current_user.is_authenticated and can_generate_tts(current_user)):
         result["generate_url"] = url_for("web.generate_audio", book_id=book_id)
 
     return jsonify(result)
@@ -1871,8 +1885,8 @@ def generate_audio(book_id):
     The pipeline finds the source file in the Calibre library on VPS1.
     Returns redirect via PRG pattern.
     """
-    # 1. Auth check — must have TTS role
-    if not current_user.role_tts():
+    # 1. AU-Books allows TTS for every registered user.
+    if not can_generate_tts(current_user):
         abort(403)
 
     # 2. Book exists?
@@ -1912,7 +1926,7 @@ def generate_audio(book_id):
 # ---------------------------------------------------------------------------
 
 @web.route("/books/<int:book_id>/audio/download", methods=["GET"])
-@login_required_if_no_ano
+@user_login_required
 def download_audiobook(book_id):
     """Download ready audiobook from OpenDrive.
 
@@ -1921,7 +1935,14 @@ def download_audiobook(book_id):
     """
     from .aubooks_audio import get_audio_record
 
-    # 1. Check audio status — only ready allowed
+    if not can_download(current_user):
+        abort(403)
+
+    # 1. Apply the same visibility filters as the canonical book page.
+    if calibre_db.get_filtered_book(book_id, allow_show_archived=True) is None:
+        abort(404)
+
+    # 2. Check audio status — only ready allowed
     record = get_audio_record(book_id)
     if record is None:
         flash(_("Audio record not found."), category="error")
@@ -1931,21 +1952,21 @@ def download_audiobook(book_id):
         flash(_("Audio is not ready for download."), category="error")
         abort(404)
 
-    # 2. Get OpenDrive path from the record
+    # 3. Get OpenDrive path from the record
     od_path = record.get("opendrive_path")
     if not od_path:
         flash(_("Audio file path not available."), category="error")
         abort(404)
 
-    # 3. Validate od_path does not contain traversal
+    # 4. Validate od_path does not contain traversal
     if ".." in od_path or od_path.startswith("/"):
         flash(_("Invalid audio file path."), category="error")
         abort(404)
 
-    # 4. Use opendrive_path directly (not computed path)
+    # 5. Use opendrive_path directly (not computed path)
     remote_path = od_path
 
-    # 5. Fetch file from OpenDrive using rclone
+    # 6. Fetch file from OpenDrive using rclone
     import tempfile
     import os
     from flask import send_file
@@ -1975,12 +1996,12 @@ def download_audiobook(book_id):
             flash(_("Failed to download audio from OpenDrive."), category="error")
             abort(500)
 
-        # 6. Verify file exists and is non-empty
+        # 7. Verify file exists and is non-empty
         if not os.path.isfile(local_path) or os.path.getsize(local_path) == 0:
             flash(_("Downloaded file is empty or missing."), category="error")
             abort(500)
 
-        # 7. Serve file as download with proper headers
+        # 8. Serve file as download with proper headers
         filename = od_path.split("/")[-1]  # e.g., vladislav-yurevich-dorofeev-kladbishche-cheloveka.m4b
         response = send_file(
             local_path,
@@ -1989,7 +2010,7 @@ def download_audiobook(book_id):
             download_name=filename,
         )
 
-        # 8. Clean up temp file after response
+        # 9. Clean up temp file after response
         @response.call_on_close
         def cleanup():
             try:
@@ -2003,8 +2024,11 @@ def download_audiobook(book_id):
 
         return response
 
-    except Exception as e:
-        flash(_("Error downloading audio: {}").format(str(e)), category="error")
+    except HTTPException:
+        raise
+    except Exception:
+        log.exception("Unexpected error downloading audiobook for book %d", book_id)
+        flash(_("Error downloading audio."), category="error")
         abort(500)
     finally:
         # Clean up temp dir if not already cleaned

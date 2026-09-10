@@ -28,6 +28,7 @@ from .render_template import render_title_template
 from .services.worker import WorkerThread, STAT_WAITING, STAT_FAIL, STAT_STARTED, STAT_FINISH_SUCCESS, STAT_ENDED, \
     STAT_CANCELLED
 from .usermanagement import user_login_required
+from .aubooks_permissions import can_download
 
 tasks = Blueprint('tasks', __name__)
 
@@ -86,7 +87,7 @@ def get_tts_jobs_json():
             "error": "Ошибка генерации аудиокниги" if status == "failed" else None,
             "book_url": url_for("web.show_book", book_id=bid),
             "download_url": (url_for("web.download_audiobook", book_id=bid)
-                             if status == "ready" and current_user.role_download() else None),
+                             if status == "ready" and can_download(current_user) else None),
         }
         result.append(item)
 

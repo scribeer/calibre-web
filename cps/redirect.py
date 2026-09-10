@@ -30,6 +30,7 @@
 from urllib.parse import urlparse, urljoin
 
 from flask import request, url_for, current_app
+from werkzeug.exceptions import HTTPException
 
 
 def is_safe_url(target):
@@ -44,9 +45,19 @@ def remove_prefix(text, prefix):
     return ""
 
 
-def get_redirect_location(next, endpoint, **values):
-    target = next or url_for(endpoint, **values)
+def get_redirect_location(next_url, endpoint, **values):
+    fallback = url_for(endpoint, **values)
+    if not next_url or not is_safe_url(next_url):
+        return fallback
+
+    parsed = urlparse(urljoin(request.host_url, next_url))
+    target = remove_prefix(parsed.path, request.environ.get('HTTP_X_SCRIPT_NAME', ""))
+    if not target:
+        return fallback
     adapter = current_app.url_map.bind(urlparse(request.host_url).netloc)
-    if not len(adapter.allowed_methods(remove_prefix(target, request.environ.get('HTTP_X_SCRIPT_NAME',"")))):
-        target = url_for(endpoint, **values)
-    return target
+    try:
+        if "GET" in adapter.allowed_methods(target):
+            return next_url
+    except HTTPException:
+        pass
+    return fallback

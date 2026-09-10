@@ -150,14 +150,15 @@
             </section>
             {% endif %}
 
+            {% set aubooks_login_url = url_for('web.login', next=url_for('web.show_book', book_id=entry.id)) %}
             <div class="btn-toolbar" role="toolbar">
                 <div class="btn-group" role="group" aria-label="{{_('Download')}} / {{_('Send to eReader')}} / {{_('Read in Browser')}}">
-                    {% if current_user.role_download() %}
-                        {% if entry.data|length %}
+                    {% if entry.data|length %}
+                        {% if current_user.is_authenticated %}
                             <div class="btn-group" role="group">
                                 {% if entry.data|length < 2 %}
                                     <button id="Download" type="button" class="btn btn-primary">
-                                        {{ _('Download') }} :
+                                        Скачать книгу:
                                     </button>
                                     {% for format in entry.data %}
                                         <a href="{{ url_for('web.download_link', book_id=entry.id, book_format=format.format|lower, anyname=entry.id|string+'.'+format.format|lower|replace('kepub', 'kepub.epub')) }}"
@@ -170,7 +171,7 @@
                                 {% else %}
                                     <button id="btnGroupDrop1" type="button" class="btn btn-primary dropdown-toggle"
                                             data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                        <span class="glyphicon glyphicon-download" aria-hidden="true"></span> {{ _('Download') }}
+                                        <span class="glyphicon glyphicon-download" aria-hidden="true"></span> Скачать книгу
                                         <span class="caret" aria-hidden="true"></span>
                                     </button>
                                     <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
@@ -182,7 +183,13 @@
                                     </ul>
                                 {% endif %}
                             </div>
+                        {% else %}
+                            <a id="Download" class="btn btn-primary" href="{{ aubooks_login_url }}" role="button">
+                                <span class="glyphicon glyphicon-download" aria-hidden="true"></span> Скачать книгу
+                            </a>
                         {% endif %}
+                    {% endif %}
+                    {% if current_user.is_authenticated %}
                         {% if current_user.kindle_mail and entry.email_share_list %}
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             {% if entry.email_share_list.__len__() == 1 %}
@@ -259,17 +266,18 @@
                         <div id="aubooks-audio-status"
                              data-book-id="{{ entry.id }}"
                              data-audio-status="{{ aubooks_audio_status }}"
+                             data-login-url="{{ aubooks_login_url }}"
                              data-csrf="{{ csrf_token() }}"
                              role="group" aria-label="{{_('Audio book status')}}">
                             {% if aubooks_audio_status == 'ready' %}
-                                {% if current_user.role_download() %}
+                                {% if current_user.is_authenticated %}
                                 <a class="btn btn-success" href="{{ url_for('web.download_audiobook', book_id=entry.id) }}" style="display:inline">
                                     <span class="glyphicon glyphicon-download" aria-hidden="true"></span> {{ _('Download audiobook') }}
                                 </a>
                                 {% else %}
-                                <button type="button" class="btn btn-default" disabled aria-disabled="true">
-                                    {{ _('Аудиокнига готова') }}
-                                </button>
+                                <a class="btn btn-success" href="{{ aubooks_login_url }}">
+                                    <span class="glyphicon glyphicon-download" aria-hidden="true"></span> {{ _('Download audiobook') }}
+                                </a>
                                 {% endif %}
                             {% elif aubooks_audio_status == 'queued' %}
                                 <button type="button" class="btn btn-default" disabled
@@ -282,7 +290,7 @@
                                     <span class="glyphicon glyphicon-cog" aria-hidden="true"></span> {{ _('Generating audio…') }}
                                 </button>
                             {% elif aubooks_audio_status == 'failed' %}
-                                {% if current_user.is_authenticated and current_user.role_tts() %}
+                                {% if current_user.is_authenticated %}
                                 <form method="POST" action="{{ url_for('web.generate_audio', book_id=entry.id) }}" style="display:inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-warning">
@@ -290,18 +298,22 @@
                                     </button>
                                 </form>
                                 {% else %}
-                                <button type="button" class="btn btn-default" disabled aria-disabled="true">
-                                    {{ _('Ошибка генерации') }}
-                                </button>
+                                <a class="btn btn-warning" href="{{ aubooks_login_url }}">
+                                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> {{ _('Retry audio') }}
+                                </a>
                                 {% endif %}
                             {% else %}
-                                {% if current_user.is_authenticated and current_user.role_tts() %}
+                                {% if current_user.is_authenticated %}
                                 <form method="POST" action="{{ url_for('web.generate_audio', book_id=entry.id) }}" style="display:inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-default">
                                         <span class="glyphicon glyphicon-music" aria-hidden="true"></span> {{ _('Generate audio') }}
                                     </button>
                                 </form>
+                                {% else %}
+                                <a class="btn btn-default" href="{{ aubooks_login_url }}">
+                                    <span class="glyphicon glyphicon-music" aria-hidden="true"></span> {{ _('Generate audio') }}
+                                </a>
                                 {% endif %}
                             {% endif %}
                         </div>
@@ -399,7 +411,19 @@
   var status = el.getAttribute('data-audio-status');
   if (status !== 'queued' && status !== 'processing') return;
   var bookId = el.getAttribute('data-book-id');
+  var loginUrl = el.getAttribute('data-login-url');
   var url = '/ajax/audio-status/' + bookId;
+  function appendLoginLink(className, iconClass, text) {
+    var link = document.createElement('a');
+    link.className = className;
+    link.href = loginUrl;
+    var icon = document.createElement('span');
+    icon.className = iconClass;
+    icon.setAttribute('aria-hidden', 'true');
+    link.appendChild(icon);
+    link.appendChild(document.createTextNode(' ' + text));
+    el.appendChild(link);
+  }
   var interval = setInterval(function() {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
@@ -425,13 +449,8 @@
           a.appendChild(document.createTextNode(' {{ _("Скачать аудиокнигу") }}'));
           el.appendChild(a);
         } else {
-          var ready = document.createElement('button');
-          ready.type = 'button';
-          ready.className = 'btn btn-default';
-          ready.disabled = true;
-          ready.setAttribute('aria-disabled', 'true');
-          ready.textContent = '{{ _("Аудиокнига готова") }}';
-          el.appendChild(ready);
+          appendLoginLink('btn btn-success', 'glyphicon glyphicon-download',
+                          '{{ _("Скачать аудиокнигу") }}');
         }
       } else if (s === 'failed') {
         clearInterval(interval);
@@ -457,13 +476,8 @@
           form.appendChild(btn);
           el.appendChild(form);
         } else {
-          var failed = document.createElement('button');
-          failed.type = 'button';
-          failed.className = 'btn btn-default';
-          failed.disabled = true;
-          failed.setAttribute('aria-disabled', 'true');
-          failed.textContent = '{{ _("Ошибка генерации") }}';
-          el.appendChild(failed);
+          appendLoginLink('btn btn-warning', 'glyphicon glyphicon-refresh',
+                          '{{ _("Озвучить повторно") }}');
         }
       } else if (s === 'not_available') {
         clearInterval(interval);
@@ -488,6 +502,9 @@
           btn2.appendChild(document.createTextNode(' {{ _("Озвучить") }}'));
           form2.appendChild(btn2);
           el.appendChild(form2);
+        } else {
+          appendLoginLink('btn btn-default', 'glyphicon glyphicon-music',
+                          '{{ _("Озвучить") }}');
         }
       } else if (s === 'queued') {
         el.innerHTML = '';

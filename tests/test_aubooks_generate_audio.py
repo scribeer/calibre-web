@@ -327,12 +327,10 @@ class TestTemplateFormStructure(unittest.TestCase):
         for form in forms:
             self.assertIn('type="submit"', form)
 
-    def test_tts_role_gates_not_available_button(self):
+    def test_authentication_gates_not_available_button(self):
         content = read_template()
-        idx = content.find('data-audio-status="not_available"')
-        self.assertGreater(idx, 0)
-        before = content[max(0, idx - 500):idx]
-        self.assertIn("role_tts", before)
+        self.assertIn("{% if current_user.is_authenticated %}", content)
+        self.assertNotIn("current_user.role_tts()", content)
 
 
 class TestAuthAndPermissions(unittest.TestCase):
@@ -345,11 +343,12 @@ class TestAuthAndPermissions(unittest.TestCase):
         after = source[idx:idx+100]
         self.assertIn("POST", after)
 
-    def test_route_has_tts_role_check(self):
+    def test_route_uses_registered_user_policy(self):
         source = read_web_source()
         idx = source.find("def generate_audio")
         func_source = source[idx:idx+3000]
-        self.assertIn("role_tts", func_source)
+        self.assertIn("can_generate_tts", func_source)
+        self.assertNotIn("current_user.role_tts", func_source)
 
     def test_route_has_user_login_required(self):
         source = read_web_source()
