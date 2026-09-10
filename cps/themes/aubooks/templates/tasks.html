@@ -11,6 +11,7 @@
 {% block body %}
 <div class="discover">
     <h2>{{_('Озвучивание')}}</h2>
+    <div id="tts-cancel-error" class="alert alert-danger" style="display:none" role="alert" aria-live="assertive"></div>
     <table class="table table-no-bordered" id="tts-table"
            data-sort-name="updated_at" data-sort-order="desc"
            data-no-records-text="{{ _('No Records Found') }}">
@@ -80,11 +81,17 @@
     return html;
   }
   function actionFormatter(value, row) {
+    if (row.can_cancel && row.cancel_url) {
+      return '<form method="POST" action="' + escapeHtml(row.cancel_url) + '" style="display:inline" class="tts-cancel-form">' +
+             '<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">' +
+             '<button class="btn btn-warning btn-sm tts-cancel-btn" type="submit">' +
+             '<span class="glyphicon glyphicon-remove" aria-hidden="true"></span> {{ _("Отменить") }}</button></form>';
+    }
     if (row.status === 'ready' && row.download_url) {
       return '<a class="btn btn-success btn-sm" href="' + row.download_url + '">' +
              '<span class="glyphicon glyphicon-download" aria-hidden="true"></span> \u0421\u043a\u0430\u0447\u0430\u0442\u044c \u0430\u0443\u0434\u0438\u043e\u043a\u043d\u0438\u0433\u0443</a>';
     }
-    if (row.status === 'failed') {
+    if (row.status === 'failed' || row.status === 'cancelled') {
       return '<a class="btn btn-default btn-sm" href="' + row.book_url + '">' +
              '<span class="glyphicon glyphicon-book" aria-hidden="true"></span> \u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043a\u043d\u0438\u0433\u0443</a>';
     }
@@ -121,7 +128,28 @@
     });
     loadTtsJobs();
     setInterval(loadTtsJobs, 5000);
-  });
-})();
+    $('#tts-table').on('submit', '.tts-cancel-form', function(e) {
+      e.preventDefault();
+      var form = $(this);
+      var btn = form.find('.tts-cancel-btn');
+      if (btn.prop('disabled')) return;
+      if (!confirm('{{ _("Отменить озвучивание этой книги?") }}')) return;
+      btn.prop('disabled', true);
+      $('#tts-cancel-error').hide();
+      $.ajax({
+        url: form.attr('action'),
+        method: 'POST',
+        data: form.serialize(),
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
+        success: function() {
+          loadTtsJobs();
+        },
+        error: function() {
+          btn.prop('disabled', false);
+          $('#tts-cancel-error').text('{{ _("Не удалось отменить. Попробуйте позже.") }}').show();
+        }
+      });
+    });
+  })();
 </script>
 {% endblock %}

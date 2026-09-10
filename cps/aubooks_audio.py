@@ -21,6 +21,7 @@ STATUS_LABELS = {
     "processing": "Озвучивается…",
     "ready": "Готово",
     "failed": "Ошибка",
+    "cancelled": "Отменено",
 }
 
 # Limit for finished jobs shown in tasks page
@@ -40,7 +41,7 @@ def get_audio_status(book_id: int) -> str:
     Get audio status for a book.
 
     Returns:
-        'not_available' | 'queued' | 'processing' | 'ready' | 'failed'
+        'not_available' | 'queued' | 'processing' | 'ready' | 'failed' | 'cancelled'
     """
     rec = get_audio_record(book_id)
     if rec is None:
@@ -90,7 +91,7 @@ def get_audio_jobs():
     """Get audio jobs for the tasks page.
 
     Returns list of dicts with safe fields for display.
-    Shows all queued/processing + last _FINISHED_LIMIT ready/failed.
+    Shows all queued/processing + last _FINISHED_LIMIT ready/failed/cancelled.
     Sorted by updated_at descending (newest first).
     """
     db_path = _get_db_path()
@@ -108,15 +109,17 @@ def get_audio_jobs():
         try:
             # Get all active (queued/processing)
             active = conn.execute(
-                "SELECT book_id, status, filename, filesize, duration, error, created_at, updated_at "
+                "SELECT book_id, job_id, requested_by_user_id, status, filename, filesize, duration, "
+                "error, created_at, updated_at "
                 "FROM audio WHERE status IN ('queued', 'processing') "
                 "ORDER BY updated_at DESC"
             ).fetchall()
 
-            # Get recent finished (ready/failed)
+            # Get recent finished history.
             finished = conn.execute(
-                "SELECT book_id, status, filename, filesize, duration, error, created_at, updated_at "
-                "FROM audio WHERE status IN ('ready', 'failed') "
+                "SELECT book_id, job_id, requested_by_user_id, status, filename, filesize, duration, "
+                "error, created_at, updated_at "
+                "FROM audio WHERE status IN ('ready', 'failed', 'cancelled') "
                 "ORDER BY updated_at DESC LIMIT ?", (_FINISHED_LIMIT,)
             ).fetchall()
 

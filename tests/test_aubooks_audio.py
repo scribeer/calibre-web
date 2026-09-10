@@ -382,6 +382,10 @@ class TestAudioStatusAccess(unittest.TestCase):
         response = self._request("failed", self._user(tts=False))
         self.assertEqual(response.get_json()["generate_url"], "/books/100/generate-audio")
 
+    def test_cancelled_status_gets_regeneration_url(self):
+        response = self._request("cancelled", self._user())
+        self.assertEqual(response.get_json()["generate_url"], "/books/100/generate-audio")
+
     def test_user_with_tts_role_gets_generate_url(self):
         response = self._request("failed", self._user(tts=True))
         self.assertEqual(response.get_json()["generate_url"], "/books/100/generate-audio")
@@ -416,7 +420,8 @@ class TestAudioStatusTemplate(unittest.TestCase):
         self.assertIn("download_audiobook", content)
         self.assertIn("audio_status == 'queued'", content)
         self.assertIn("audio_status == 'processing'", content)
-        self.assertIn("audio_status == 'failed'", content)
+        self.assertIn("aubooks_audio_status == 'failed'", content)
+        self.assertIn("aubooks_audio_status == 'cancelled'", content)
         self.assertNotIn("role_tts()", content)
 
     def test_template_no_href_hash(self):
@@ -430,6 +435,17 @@ class TestAudioStatusTemplate(unittest.TestCase):
         self.assertIn("Скачать аудиокнигу", content)
         self.assertIn("Озвучить повторно", content)
         self.assertIn("Озвучить", content)
+        self.assertIn("Отменено", content)
+
+    def test_cancelled_has_separate_status_and_generate_flow(self):
+        content = (Path(__file__).parent.parent / "cps" / "themes" / "aubooks" /
+                   "templates" / "detail.html").read_text()
+        start = content.index("aubooks_audio_status == 'cancelled'")
+        section = content[start:content.index("{% else %}", start)]
+        self.assertIn("Отменено", section)
+        self.assertIn("generate_audio", section)
+        self.assertIn("aria-live=\"polite\"", content)
+        self.assertIn("s === 'cancelled'", content)
 
     def test_template_has_polling_js(self):
         template_path = Path(__file__).parent.parent / "cps" / "themes" / "aubooks" / "templates" / "detail.html"
@@ -554,6 +570,29 @@ class TestGetAudioJobs(unittest.TestCase):
         finally:
             p.unlink(missing_ok=True)
 
+    def test_cancelled_is_finished_history_with_russian_label(self):
+        p = tmp_db()
+        try:
+            conn = sqlite3.connect(str(p))
+            conn.execute(
+                "CREATE TABLE audio (book_id INTEGER, job_id TEXT, requested_by_user_id INTEGER, "
+                "status TEXT, filename TEXT, filesize INTEGER, duration REAL, error TEXT, "
+                "created_at TEXT, updated_at TEXT)"
+            )
+            conn.execute(
+                "INSERT INTO audio VALUES (1, 'job-1', 7, 'cancelled', NULL, NULL, NULL, NULL, "
+                "'2026-09-09T10:00:00', '2026-09-09T10:01:00')"
+            )
+            conn.commit()
+            conn.close()
+            from cps.aubooks_audio import get_audio_jobs, STATUS_LABELS
+            with patch("cps.aubooks_audio._get_db_path", return_value=p):
+                result = get_audio_jobs()
+            self.assertEqual(result[0]["status"], "cancelled")
+            self.assertEqual(STATUS_LABELS["cancelled"], "Отменено")
+        finally:
+            p.unlink(missing_ok=True)
+
     def test_no_opendrive_path_exposed(self):
         p = tmp_db()
         try:
@@ -572,7 +611,8 @@ class TestGetAudioJobs(unittest.TestCase):
                 row = result[0]
                 self.assertNotIn("opendrive_path", row)
                 self.assertNotIn("sha256", row)
-                self.assertNotIn("job_id", row)
+                self.assertIn("job_id", row)
+                self.assertIn("requested_by_user_id", row)
                 self.assertNotIn("id", row)
         finally:
             p.unlink(missing_ok=True)
@@ -685,6 +725,24 @@ class TestTtsJobsTemplate(unittest.TestCase):
         self.assertIn("\\u041e\\u0442\\u043a\\u0440\\u044b\\u0442\\u044c", content)
         self.assertIn("r.action = actionFormatter(null, r)", content)
 
+    def test_cancel_action_is_csrf_post_and_permission_gated(self):
+        content = self._read()
+        self.assertIn("row.can_cancel && row.cancel_url", content)
+        self.assertIn('<form method="POST"', content)
+        self.assertIn('name="csrf_token"', content)
+        self.assertIn("Отменить", content)
+
+    def test_cancel_uses_confirm_and_ajax_without_full_reload(self):
+        content = self._read()
+        self.assertIn("tts-cancel-form", content)
+        self.assertIn("Отменить озвучивание этой книги?", content)
+        self.assertIn("e.preventDefault()", content)
+        self.assertIn("X-Requested-With", content)
+        self.assertIn("btn.prop('disabled', true)", content)
+        self.assertIn("btn.prop('disabled', false)", content)
+        self.assertIn("loadTtsJobs()", content)
+        self.assertIn("tts-cancel-error", content)
+
     def test_has_date_formatting_js(self):
         content = self._read()
         self.assertIn("formatDate", content)
@@ -740,6 +798,8 @@ class TestTtsJobsEndpointSecurity(unittest.TestCase):
     def _row(book_id, status="failed", error="/home/private token=secret"):
         return {
             "book_id": book_id,
+            "job_id": f"job-{book_id}",
+            "requested_by_user_id": 7,
             "status": status,
             "filename": "test.m4b",
             "filesize": 1024,
@@ -751,7 +811,8 @@ class TestTtsJobsEndpointSecurity(unittest.TestCase):
             "sha256": "secret-hash",
         }
 
-    def _request(self, rows, books, can_download=True):
+    def _request(self, rows, books, can_download=True, user_id=7, admin=False,
+                 theme=3, tts=True):
         query = MagicMock()
         query.options.return_value = query
         query.filter.return_value = query
@@ -760,11 +821,14 @@ class TestTtsJobsEndpointSecurity(unittest.TestCase):
             session=SimpleNamespace(query=MagicMock(return_value=query)),
             common_filters=MagicMock(return_value=object()),
         )
-        user = SimpleNamespace(is_authenticated=True, role_download=lambda: can_download)
+        user = SimpleNamespace(id=user_id, is_authenticated=True,
+                               role_download=lambda: can_download,
+                               role_admin=lambda: admin,
+                               role_tts=lambda: tts)
         with self.app.test_request_context("/ajax/tts-jobs"):
             with patch.object(self.tasks_status, "calibre_db", fake_db), \
                     patch.object(self.tasks_status, "current_user", user), \
-                    patch("cps.aubooks_permissions.config.config_theme", 3, create=True), \
+                    patch("cps.aubooks_permissions.config.config_theme", theme, create=True), \
                     patch("cps.aubooks_audio.get_audio_jobs", return_value=rows):
                 response = self.tasks_status.get_tts_jobs_json.__wrapped__()
         fake_db.common_filters.assert_called_once_with(allow_show_archived=True)
@@ -792,6 +856,44 @@ class TestTtsJobsEndpointSecurity(unittest.TestCase):
         self.assertNotIn("token=secret", serialized)
         self.assertNotIn("opendrive_path", data)
         self.assertNotIn("sha256", data)
+        self.assertNotIn("requested_by_user_id", data)
+        self.assertNotIn("job_id", data)
+
+    def test_owner_gets_cancel_url_for_active_status_only(self):
+        book = SimpleNamespace(id=1, title="Книга", authors=[])
+        active = self._request([self._row(1, status="queued", error=None)], [book])[0]
+        finished = self._request([self._row(1, status="cancelled", error=None)], [book])[0]
+        self.assertTrue(active["can_cancel"])
+        self.assertIn("/cancel", active["cancel_url"])
+        self.assertFalse(finished["can_cancel"])
+        self.assertIsNone(finished["cancel_url"])
+
+    def test_other_user_and_legacy_jobs_have_no_cancel_url(self):
+        book = SimpleNamespace(id=1, title="Книга", authors=[])
+        other = self._row(1, status="processing", error=None)
+        other["requested_by_user_id"] = 99
+        legacy = self._row(1, status="queued", error=None)
+        legacy["requested_by_user_id"] = None
+        for row in (other, legacy):
+            with self.subTest(owner=row["requested_by_user_id"]):
+                data = self._request([row], [book])[0]
+                self.assertFalse(data["can_cancel"])
+                self.assertIsNone(data["cancel_url"])
+
+    def test_admin_gets_cancel_url_for_legacy_active_job(self):
+        book = SimpleNamespace(id=1, title="Книга", authors=[])
+        row = self._row(1, status="queued", error=None)
+        row["requested_by_user_id"] = None
+        data = self._request([row], [book], admin=True)[0]
+        self.assertTrue(data["can_cancel"])
+        self.assertIn("/cancel", data["cancel_url"])
+
+    def test_standard_theme_permission_denial_removes_cancel_url(self):
+        book = SimpleNamespace(id=1, title="Книга", authors=[])
+        row = self._row(1, status="queued", error=None)
+        data = self._request([row], [book], admin=True, theme=0, tts=False)[0]
+        self.assertFalse(data["can_cancel"])
+        self.assertIsNone(data["cancel_url"])
 
     def test_ready_download_url_is_available_without_separate_role(self):
         book = SimpleNamespace(id=1, title="Книга", authors=[])

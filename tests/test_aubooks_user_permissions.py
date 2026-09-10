@@ -28,11 +28,13 @@ class TestAubooksUserPermissions(unittest.TestCase):
         cls.app.register_blueprint(web.web)
 
     @staticmethod
-    def _user(authenticated, download=False, tts=False):
+    def _user(authenticated, download=False, tts=False, user_id=7, admin=False):
         return SimpleNamespace(
+            id=user_id,
             is_authenticated=authenticated,
             role_download=MagicMock(return_value=download),
             role_tts=MagicMock(return_value=tts),
+            role_admin=MagicMock(return_value=admin),
         )
 
     def _login_required(self, user):
@@ -86,6 +88,17 @@ class TestAubooksUserPermissions(unittest.TestCase):
             )
         queue.assert_not_called()
 
+    def test_guest_tts_cancel_redirects_to_login(self):
+        with patch("cps.aubooks_audio.get_audio_record") as audio_record, \
+                patch("cps.aubooks_tts.cancel_job") as cancel:
+            self._guest_request(
+                self.web.cancel_audio_job,
+                "/books/10/audio/jobs/job-1/cancel",
+                10, "job-1",
+            )
+        audio_record.assert_not_called()
+        cancel.assert_not_called()
+
     def test_normal_user_can_download_ebook_without_download_role(self):
         user = self._user(True, download=False)
         with self.app.test_request_context("/download/10/fb2/10.fb2"), \
@@ -111,8 +124,39 @@ class TestAubooksUserPermissions(unittest.TestCase):
                 patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
             response = self.web.generate_audio.__wrapped__(10)
         self.assertEqual(response.status_code, 303)
-        queue.assert_called_once_with(10)
+        queue.assert_called_once_with(10, 7)
         user.role_tts.assert_not_called()
+
+    def test_cancelled_audio_can_be_regenerated_with_server_owner(self):
+        user = self._user(True, user_id=12)
+        queue_result = SimpleNamespace(success=True, job_id="job-2", exit_code=0, error_message="")
+        with self.app.test_request_context("/books/10/generate-audio", method="POST"), \
+                patch.object(self.web, "current_user", user), \
+                patch.object(self.permissions.config, "config_theme", 3, create=True), \
+                patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
+                patch("cps.aubooks_audio.get_audio_status", return_value="cancelled"), \
+                patch("cps.aubooks_tts.queue_book", return_value=queue_result) as queue, \
+                patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
+            response = self.web.generate_audio.__wrapped__(10)
+        self.assertEqual(response.status_code, 303)
+        queue.assert_called_once_with(10, 12)
+
+    def test_queue_error_detail_is_not_flashed_verbatim(self):
+        user = self._user(True)
+        queue_result = SimpleNamespace(success=False, job_id="", exit_code=500,
+                                       error_message="private dispatcher detail")
+        with self.app.test_request_context("/books/10/generate-audio", method="POST"), \
+                patch.object(self.web, "current_user", user), \
+                patch.object(self.permissions.config, "config_theme", 3, create=True), \
+                patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
+                patch("cps.aubooks_audio.get_audio_status", return_value="not_available"), \
+                patch("cps.aubooks_tts.queue_book", return_value=queue_result), \
+                patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
+            response = self.web.generate_audio.__wrapped__(10)
+            messages = " ".join(get_flashed_messages())
+        self.assertEqual(response.status_code, 303)
+        self.assertNotIn("private dispatcher detail", messages)
+        self.assertIn("Unable to start audio generation", messages)
 
     def _download_audio(self, user, visible=True, run_side_effect=None):
         record = {
@@ -263,7 +307,7 @@ class TestSafeNextAndAubooksTemplates(unittest.TestCase):
         detail = (Path(__file__).parent.parent / "cps" / "themes" / "aubooks" /
                   "templates" / "detail.html").read_text()
         self.assertIn('data-login-url="{{ aubooks_login_url }}"', detail)
-        self.assertEqual(detail.count("appendLoginLink("), 4)
+        self.assertEqual(detail.count("appendLoginLink("), 5)
         self.assertIn("'{{ _(\"Скачать аудиокнигу\") }}'", detail)
         self.assertIn("'{{ _(\"Озвучить повторно\") }}'", detail)
         self.assertIn("'{{ _(\"Озвучить\") }}'", detail)

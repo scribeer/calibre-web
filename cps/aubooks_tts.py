@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 
 log = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ log = logging.getLogger(__name__)
 _DEFAULT_DISPATCH_URL = "http://127.0.0.1:18900"
 _INVALID_RESPONSE = "Audio generation service returned an invalid response."
 _QUEUE_REJECTED = "Audio generation service rejected the request."
+_CANCEL_REJECTED = "Audio generation service could not cancel the job."
 
 
 def _read_json_response(response, operation):
@@ -57,6 +59,23 @@ class QueueResult:
 
     def __repr__(self):
         return f"QueueResult(success={self.success}, exit_code={self.exit_code}, error={self.error_message!r})"
+
+
+class CancelResult:
+    """Machine-readable result of a cancel_job call."""
+
+    __slots__ = ("success", "exit_code", "error_message", "status")
+
+    def __init__(self, success: bool, exit_code: int = 0,
+                 error_message: str = "", status: str = ""):
+        self.success = success
+        self.exit_code = exit_code
+        self.error_message = error_message
+        self.status = status
+
+    def __repr__(self):
+        return (f"CancelResult(success={self.success}, exit_code={self.exit_code}, "
+                f"status={self.status!r}, error={self.error_message!r})")
 
 
 def queue_book(book_id: int, requested_by_user_id: int) -> QueueResult:
@@ -120,3 +139,45 @@ def queue_book(book_id: int, requested_by_user_id: int) -> QueueResult:
         return QueueResult(False, _response_code(data, 1), _QUEUE_REJECTED)
     log.warning("Dispatcher queue response omitted a boolean ok field: %r", data)
     return QueueResult(False, 1, _INVALID_RESPONSE)
+
+
+def cancel_job(job_id: str) -> CancelResult:
+    """Cancel one dispatcher job identified by its trusted audio row ID."""
+    if not isinstance(job_id, str) or not job_id:
+        return CancelResult(False, 1, _INVALID_RESPONSE)
+
+    dispatch_url = os.environ.get("TTS_DISPATCH_URL", _DEFAULT_DISPATCH_URL)
+    quoted_job_id = urllib.parse.quote(job_id, safe="")
+    req = urllib.request.Request(
+        f"{dispatch_url}/cancel/{quoted_job_id}",
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = _read_json_response(resp, "cancel")
+    except urllib.error.HTTPError as exc:
+        data = _read_json_response(exc, "cancel HTTP error")
+        if data is not None:
+            log.warning("Dispatcher rejected cancellation: %r", data)
+        return CancelResult(False, _response_code(data, exc.code) if data else exc.code, _CANCEL_REJECTED)
+    except urllib.error.URLError as exc:
+        log.error("Dispatcher unavailable while cancelling job %s: %s", job_id, exc)
+        return CancelResult(False, 1, "Audio generation service is unavailable.")
+    except TimeoutError:
+        log.error("Dispatcher timed out while cancelling job %s", job_id)
+        return CancelResult(False, 1, "Audio generation service timed out.")
+    except Exception as exc:
+        log.error("Dispatcher cancellation failed for job %s: %s", job_id, exc)
+        return CancelResult(False, 1, "Audio generation service is unavailable.")
+
+    if data is None:
+        return CancelResult(False, 1, _INVALID_RESPONSE)
+    status = data.get("status")
+    if data.get("ok") is True and status in ("cancelled", "already_cancelled"):
+        return CancelResult(True, 0, "", status)
+    if data.get("ok") is False:
+        log.warning("Dispatcher rejected cancellation: %r", data)
+        return CancelResult(False, _response_code(data, 1), _CANCEL_REJECTED)
+    log.warning("Invalid dispatcher cancellation result: %r", data)
+    return CancelResult(False, 1, _INVALID_RESPONSE)

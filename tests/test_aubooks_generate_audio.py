@@ -48,47 +48,42 @@ class TestTransportAbstraction(unittest.TestCase):
         source = read_tts_source()
         self.assertIn("QueueResult(True", source)
 
-    def test_uses_subprocess_run(self):
-        """Transport should use subprocess.run (not Popen)."""
+    def test_uses_http_post(self):
         source = read_tts_source()
-        self.assertIn("subprocess.run(", source)
+        self.assertIn("urllib.request.Request", source)
+        self.assertIn('method="POST"', source)
 
     def test_no_shell_true(self):
         """Transport should not use shell=True."""
         source = read_tts_source()
         self.assertNotIn("shell=True", source)
 
-    def test_args_are_list(self):
-        """Command should be built as a list."""
+    def test_queue_payload_has_book_and_owner(self):
         source = read_tts_source()
-        self.assertIn('cmd = [remote, "start-book-id"', source)
+        self.assertIn('"book_id": book_id', source)
+        self.assertIn('"requested_by_user_id": requested_by_user_id', source)
 
-    def test_exit_code_messages_defined(self):
-        """Exit code messages should be mapped."""
+    def test_json_content_type_is_set(self):
         source = read_tts_source()
-        self.assertIn("_EXIT_MESSAGES", source)
-        self.assertIn("4:", source)
+        self.assertIn('"Content-Type": "application/json"', source)
 
     def test_timeout_handled(self):
-        """subprocess.TimeoutExpired should be caught."""
+        """HTTP transport timeouts should be caught."""
         source = read_tts_source()
-        self.assertIn("TimeoutExpired", source)
+        self.assertIn("TimeoutError", source)
 
-    def test_file_not_found_handled(self):
-        """FileNotFoundError should be caught."""
+    def test_url_error_handled(self):
         source = read_tts_source()
-        self.assertIn("FileNotFoundError", source)
+        self.assertIn("urllib.error.URLError", source)
 
-    def test_os_error_handled(self):
-        """OSError should be caught."""
+    def test_unexpected_transport_error_handled(self):
         source = read_tts_source()
-        self.assertIn("OSError", source)
+        self.assertIn("except Exception", source)
 
-    def test_remote_path_configurable(self):
-        """remote_path parameter should allow overriding the binary path."""
+    def test_dispatch_url_configurable(self):
         source = read_tts_source()
-        self.assertIn("remote_path", source)
-        self.assertIn("_DEFAULT_AUBOOK_REMOTE", source)
+        self.assertIn("TTS_DISPATCH_URL", source)
+        self.assertIn("_DEFAULT_DISPATCH_URL", source)
 
 
 # --- Route tests ---
@@ -256,7 +251,7 @@ class TestDuplicateProtection(unittest.TestCase):
             create_queued(100, job_id="job1", db_path=p)
             with self.assertRaises(ValueError) as ctx:
                 reset_for_retry(100, p)
-            self.assertIn("Only failed", str(ctx.exception))
+            self.assertIn("Cannot reset", str(ctx.exception))
         finally:
             p.unlink(missing_ok=True)
 
@@ -266,32 +261,29 @@ class TestTemplateFormStructure(unittest.TestCase):
 
     def test_not_available_has_post_form(self):
         content = read_template()
-        idx = content.find('data-audio-status="not_available"')
-        self.assertGreater(idx, 0)
-        before = content[max(0, idx - 500):idx]
-        self.assertIn('method="POST"', before)
-        self.assertIn("csrf_token", before)
-        self.assertIn("generate_audio", before)
+        forms = re.findall(r'<form[^>]*generate_audio[^>]*>.*?</form>', content, re.DOTALL)
+        self.assertEqual(len(forms), 3)
+        self.assertIn('class="btn btn-default"', forms[2])
 
     def test_failed_has_post_form(self):
         content = read_template()
-        idx = content.find('data-audio-status="failed"')
+        idx = content.find("aubooks_audio_status == 'failed'")
         self.assertGreater(idx, 0)
-        before = content[max(0, idx - 500):idx]
-        self.assertIn('method="POST"', before)
-        self.assertIn("csrf_token", before)
-        self.assertIn("generate_audio", before)
+        section = content[idx:content.find("{% else %}", idx)]
+        self.assertIn('method="POST"', section)
+        self.assertIn("csrf_token", section)
+        self.assertIn("generate_audio", section)
 
     def test_queued_no_form(self):
         content = read_template()
-        idx = content.find('data-audio-status="queued"')
+        idx = content.find("aubooks_audio_status == 'queued'")
         self.assertGreater(idx, 0)
         section = content[idx:idx+300]
         self.assertNotIn('<form', section)
 
     def test_processing_no_form(self):
         content = read_template()
-        idx = content.find('data-audio-status="processing"')
+        idx = content.find("aubooks_audio_status == 'processing'")
         self.assertGreater(idx, 0)
         next_section_start = content.find('{% elif', idx)
         section = content[idx:next_section_start]
@@ -299,7 +291,7 @@ class TestTemplateFormStructure(unittest.TestCase):
 
     def test_ready_no_form(self):
         content = read_template()
-        idx = content.find('data-audio-status="ready"')
+        idx = content.find("aubooks_audio_status == 'ready'")
         self.assertGreater(idx, 0)
         section = content[idx:idx+500]
         self.assertNotIn("generate_audio", section)
@@ -310,7 +302,7 @@ class TestTemplateFormStructure(unittest.TestCase):
             r'<form[^>]*generate_audio[^>]*>.*?</form>', re.DOTALL
         )
         forms = form_pattern.findall(content)
-        self.assertEqual(len(forms), 2)
+        self.assertEqual(len(forms), 3)
         for form in forms:
             self.assertIn("csrf_token", form)
 
