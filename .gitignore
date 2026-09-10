@@ -25,6 +25,7 @@ vendor/
 *.db
 *.log
 cps/cache
+/8084
 
 .idea/
 *.bak

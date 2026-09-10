@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-APP_DB="/home/feninf/calibre-web-dev-data/app.db"
+APP_DB="/home/feninf/calibre-web/8084"
 DEV_LIBRARY_DIR="/home/feninf/calibre-web-dev-data/library"
 SOURCE_DB="/home/feninf/aubooks/library/metadata.db"
 DEV_METADATA_DB="$DEV_LIBRARY_DIR/metadata.db"
