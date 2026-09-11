@@ -734,6 +734,13 @@ class TestTtsJobsTemplate(unittest.TestCase):
         self.assertIn("showLoadError(error)", content)
         self.assertIn("setInterval(loadTtsJobs, 5000)", content)
 
+    def test_polling_script_is_closed_and_has_no_diagnostics(self):
+        content = self._read()
+        self.assertIn("  });\n})();\n</script>", content)
+        self.assertNotIn("tts-diagnostics", content)
+        self.assertNotIn("diagnostics pending", content)
+        self.assertNotIn("ajax started:", content)
+
     def test_has_download_action(self):
         content = self._read()
         # Check for the Unicode escapes as they appear in the JS source
