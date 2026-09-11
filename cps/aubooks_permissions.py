@@ -17,3 +17,12 @@ def can_generate_tts(user):
     if is_aubooks_active():
         return bool(user and user.is_authenticated)
     return user.role_tts()
+
+
+def can_upload_for_tts(user):
+    return bool(
+        user
+        and user.is_authenticated
+        and is_aubooks_active()
+        and (user.role_admin() or user.role_aubooks_upload_tts())
+    )

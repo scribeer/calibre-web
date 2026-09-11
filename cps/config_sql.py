@@ -274,6 +274,12 @@ class ConfigSQL(object):
     def role_delete_books(self):
         return self._has_role(constants.ROLE_DELETE_BOOKS)
 
+    def role_tts(self):
+        return self._has_role(constants.ROLE_GENERATE_TTS)
+
+    def role_aubooks_upload_tts(self):
+        return self._has_role(constants.ROLE_AUBOOKS_UPLOAD_TTS)
+
     def show_element_new_user(self, value):
         return constants.has_flag(self.config_default_show, value)
 

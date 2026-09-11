@@ -492,8 +492,7 @@ def edit_list_user(param):
                     if user.name == "Guest" and value in \
                       [constants.ROLE_ADMIN, constants.ROLE_PASSWD, constants.ROLE_EDIT_SHELFS]:
                         raise Exception(_("Guest can't have this role"))
-                    # check for valid value, last on checks for power of 2 value
-                    if value > 0 and value <= constants.ROLE_VIEWER and (value & value - 1 == 0 or value == 1):
+                    if value in constants.ALL_ROLES.values():
                         if vals['value'] == 'true':
                             user.role |= value
                         elif vals['value'] == 'false':
@@ -602,7 +601,7 @@ def update_view_configuration():
     _config_string(to_save, "config_default_language")
     _config_string(to_save, "config_default_locale")
 
-    config.config_default_role = constants.selected_roles(to_save)
+    config.config_default_role = constants.selected_roles(to_save, config.config_default_role)
     config.config_default_role &= ~constants.ROLE_ANONYMOUS
 
     config.config_default_show = sum(int(k[5:]) for k in to_save if k.startswith('show_'))
@@ -2100,6 +2099,15 @@ def _delete_user(content):
         raise Exception(_("No admin user remaining, can't delete user"))
 
 
+def _update_user_roles(to_save, content):
+    anonymous = content.is_anonymous
+    content.role = constants.selected_roles(to_save, content.role)
+    if anonymous:
+        content.role |= constants.ROLE_ANONYMOUS
+    else:
+        content.role &= ~constants.ROLE_ANONYMOUS
+
+
 def _handle_edit_user(to_save, content, languages, translations, kobo_support):
     if to_save.get("delete"):
         try:
@@ -2141,12 +2149,8 @@ def _handle_edit_user(to_save, content, languages, translations, kobo_support):
         if to_save.get("locale"):
             content.locale = to_save["locale"]
         try:
-            anonymous = content.is_anonymous
-            content.role = constants.selected_roles(to_save)
-            if anonymous:
-                content.role |= constants.ROLE_ANONYMOUS
-            else:
-                content.role &= ~constants.ROLE_ANONYMOUS
+            _update_user_roles(to_save, content)
+            if not content.is_anonymous:
                 if to_save.get("password", ""):
                     content.password = generate_password_hash(helper.valid_password(to_save.get("password", "")))
 

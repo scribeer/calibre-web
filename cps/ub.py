@@ -175,6 +175,9 @@ class UserBase:
     def role_tts(self):
         return self._has_role(constants.ROLE_GENERATE_TTS)
 
+    def role_aubooks_upload_tts(self):
+        return self._has_role(constants.ROLE_AUBOOKS_UPLOAD_TTS)
+
     @property
     def is_active(self):
         return True

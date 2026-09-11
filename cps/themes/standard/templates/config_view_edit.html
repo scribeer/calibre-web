@@ -96,6 +96,14 @@
           <input type="checkbox" name="viewer_role" id="viewer_role" {% if conf.role_viewer() %}checked{% endif %}>
           <label for="viewer_role">{{_('Allow eBook Viewer')}}</label>
         </div>
+        <div class="form-group">
+          <input type="checkbox" name="tts_role" id="tts_role" {% if conf.role_tts() %}checked{% endif %}>
+          <label for="tts_role">{{_('Generate audio')}}</label>
+        </div>
+        <div class="form-group">
+          <input type="checkbox" name="aubooks_upload_tts_role" id="aubooks_upload_tts_role" {% if conf.role_aubooks_upload_tts() %}checked{% endif %}>
+          <label for="aubooks_upload_tts_role">{{_('Загрузка книг для озвучивания')}}</label>
+        </div>
       {% if conf.config_uploading %}
         <div class="form-group">
           <input type="checkbox" name="upload_role" id="upload_role" {% if conf.role_upload() %}checked{% endif %}>

@@ -69,6 +69,7 @@ ROLE_EDIT_SHELFS        = 1 << 6
 ROLE_DELETE_BOOKS       = 1 << 7
 ROLE_VIEWER             = 1 << 8
 ROLE_GENERATE_TTS       = 1 << 9
+ROLE_AUBOOKS_UPLOAD_TTS = 1 << 10
 
 ALL_ROLES = {
                 "admin_role": ROLE_ADMIN,
@@ -80,6 +81,7 @@ ALL_ROLES = {
                 "delete_role": ROLE_DELETE_BOOKS,
                 "viewer_role": ROLE_VIEWER,
                 "tts_role": ROLE_GENERATE_TTS,
+                "aubooks_upload_tts_role": ROLE_AUBOOKS_UPLOAD_TTS,
             }
 
 DETAIL_RANDOM           = 1 <<  0
@@ -121,7 +123,9 @@ sidebar_settings = {
             }
 
 
-ADMIN_USER_ROLES        = sum(r for r in ALL_ROLES.values()) & ~ROLE_ANONYMOUS
+ADMIN_USER_ROLES        = (sum(r for r in ALL_ROLES.values())
+                           & ~ROLE_ANONYMOUS
+                           & ~ROLE_AUBOOKS_UPLOAD_TTS)
 ADMIN_USER_SIDEBAR      = (SIDEBAR_LIST << 1) - 1
 
 UPDATE_STABLE       = 0 << 0
@@ -168,8 +172,9 @@ def has_flag(value, bit_flag):
     return bit_flag == (bit_flag & (value or 0))
 
 
-def selected_roles(dictionary):
-    return sum(v for k, v in ALL_ROLES.items() if k in dictionary)
+def selected_roles(dictionary, current_roles=0):
+    known_roles = sum(ALL_ROLES.values())
+    return (current_roles & ~known_roles) | sum(v for k, v in ALL_ROLES.items() if k in dictionary)
 
 
 # :rtype: BookMeta
