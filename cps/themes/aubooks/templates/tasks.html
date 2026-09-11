@@ -11,7 +11,9 @@
 {% block body %}
 <div class="discover">
     <h2>{{_('Озвучивание')}}</h2>
+    <p id="tts-load-status" role="status" aria-live="polite">{{ _('Загрузка...') }}</p>
     <table class="table table-no-bordered" id="tts-table"
+           aria-busy="true"
            data-sort-name="updated_at" data-sort-order="desc"
            data-no-records-text="{{ _('No Records Found') }}">
       <thead>
@@ -34,6 +36,25 @@
 <script src="{{ url_for('static', filename='js/libs/bootstrap-table/bootstrap-table-locale-all.min.js') }}"></script>
 <script>
 (function() {
+  var loadErrorMessage = {{ _("Не удалось загрузить задания")|tojson }};
+
+  function showLoadStatus(message, isError) {
+    $('#tts-load-status')
+      .text(message)
+      .toggleClass('text-danger', isError)
+      .prop('hidden', false);
+    $('#tts-table').attr('aria-busy', 'false');
+  }
+  function hideLoadStatus() {
+    $('#tts-load-status').prop('hidden', true);
+    $('#tts-table').attr('aria-busy', 'false');
+  }
+  function showLoadError(error) {
+    showLoadStatus(loadErrorMessage, true);
+    if (window.console && window.console.error) {
+      window.console.error(loadErrorMessage, error);
+    }
+  }
   function formatDate(iso) {
     if (!iso) return '—';
     try {
@@ -98,27 +119,44 @@
       async: true,
       timeout: 5000,
       success: function(data) {
-        var rows = data.map(function(r) {
-          r.title_cell = titleCellFormatter(r.title, r);
-          r.created_at_display = formatDate(r.created_at);
-          r.updated_at_display = formatDate(r.updated_at);
-          r.filesize_display = formatFilesize(r.filesize);
-          r.duration_display = formatDuration(r.duration);
-          r.error_display = truncateError(r.error);
-          r.action = actionFormatter(null, r);
-          return r;
-        });
-        $('#tts-table').bootstrapTable('load', rows);
+        try {
+          if (!Array.isArray(data)) throw new Error('Invalid tasks response');
+          var rows = data.map(function(r) {
+            r.title_cell = titleCellFormatter(r.title, r);
+            r.created_at_display = formatDate(r.created_at);
+            r.updated_at_display = formatDate(r.updated_at);
+            r.filesize_display = formatFilesize(r.filesize);
+            r.duration_display = formatDuration(r.duration);
+            r.error_display = truncateError(r.error);
+            r.action = actionFormatter(null, r);
+            return r;
+          });
+          $('#tts-table').bootstrapTable('load', rows);
+          if (rows.length) {
+            hideLoadStatus();
+          } else {
+            showLoadStatus({{ _("Заданий нет")|tojson }}, false);
+          }
+        } catch (error) {
+          showLoadError(error);
+        }
+      },
+      error: function(xhr, status, error) {
+        showLoadError(error || status);
       }
     });
   }
 
   $(function() {
-    $('#tts-table').bootstrapTable({
-      striped: true,
-      classes: 'table table-no-bordered',
-      undefinedText: '\u2014'
-    });
+    try {
+      $('#tts-table').bootstrapTable({
+        striped: true,
+        classes: 'table table-no-bordered',
+        undefinedText: '\u2014'
+      });
+    } catch (error) {
+      showLoadError(error);
+    }
     loadTtsJobs();
     setInterval(loadTtsJobs, 5000);
   })();

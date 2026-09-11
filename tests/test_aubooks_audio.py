@@ -718,6 +718,22 @@ class TestTtsJobsTemplate(unittest.TestCase):
         self.assertIn("setInterval", content)
         self.assertIn("5000", content)
 
+    def test_has_loading_and_ajax_error_states(self):
+        content = self._read()
+        self.assertIn('id="tts-load-status"', content)
+        self.assertIn('role="status"', content)
+        self.assertIn("Загрузка...", content)
+        self.assertIn("Не удалось загрузить задания", content)
+        self.assertIn("error: function(xhr, status, error)", content)
+
+    def test_render_failures_are_visible_and_polling_continues(self):
+        content = self._read()
+        self.assertIn("if (!Array.isArray(data))", content)
+        self.assertIn("bootstrapTable('load', rows)", content)
+        self.assertIn("catch (error)", content)
+        self.assertIn("showLoadError(error)", content)
+        self.assertIn("setInterval(loadTtsJobs, 5000)", content)
+
     def test_has_download_action(self):
         content = self._read()
         # Check for the Unicode escapes as they appear in the JS source
