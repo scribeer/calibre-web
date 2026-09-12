@@ -18,7 +18,9 @@
 #  along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import atexit
+import hashlib
 import os
+import secrets
 import sys
 from datetime import datetime, timezone, timedelta
 import itertools
@@ -531,6 +533,24 @@ class Registration(Base):
         return "<Registration('{0}')>".format(self.domain)
 
 
+# One-time registration invite token
+class Invite(Base):
+    __tablename__ = 'invite'
+    __table_args__ = {'sqlite_autoincrement': True}
+
+    id = Column(Integer, primary_key=True)
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    created_by_user_id = Column(Integer, ForeignKey('user.id'), nullable=True)
+    created_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used_at = Column(DateTime, nullable=True)
+    used_by_user_id = Column(Integer, ForeignKey('user.id'), nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+    def __repr__(self):
+        return '<Invite %r>' % self.id
+
+
 class RemoteAuthToken(Base):
     __tablename__ = 'remote_auth_token'
 
@@ -642,6 +662,93 @@ def clean_database(_session):
     except exc.OperationalError:  # Database is not writeable
         print('Settings database is not writeable. Exiting...')
         sys.exit(2)
+
+
+# ---------------------------------------------------------------------------
+# Registration invite helpers
+# ---------------------------------------------------------------------------
+
+INVITE_LIFETIME_DAYS = 7
+
+
+def _hash_token(raw_token):
+    """Return SHA-256 hex digest of a raw bearer token."""
+    return hashlib.sha256(raw_token.encode('ascii')).hexdigest()
+
+
+def create_invite(_session, created_by_user_id=None):
+    """Generate a one-time registration invite.
+
+    Returns the raw bearer token (shown once to admin).
+    Stores only the SHA-256 hash in the database.
+    Caller must commit the session.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    raw_token = secrets.token_urlsafe(32)
+    invite = Invite(
+        token_hash=_hash_token(raw_token),
+        created_by_user_id=created_by_user_id,
+        created_at=now,
+        expires_at=now + timedelta(days=INVITE_LIFETIME_DAYS),
+    )
+    _session.add(invite)
+    return raw_token
+
+
+def get_invite_by_token(_session, raw_token):
+    """Look up a valid (unused, unrevoked, unexpired) invite by raw token.
+
+    Returns the Invite row or None.
+    """
+    token_hash = _hash_token(raw_token)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return _session.query(Invite).filter(
+        Invite.token_hash == token_hash,
+        Invite.used_at.is_(None),
+        Invite.revoked_at.is_(None),
+        Invite.expires_at > now,
+    ).one_or_none()
+
+
+def consume_invite(_session, invite, user_id):
+    """Atomically mark an invite as used.
+
+    Returns True on success, False if already consumed/revoked/expired.
+    The caller is responsible for committing the session so that user
+    creation and invite consumption can share one transaction.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if invite.used_at is not None or invite.revoked_at is not None:
+        return False
+    if invite.expires_at <= now:
+        return False
+    rows = _session.query(Invite).filter(
+        Invite.id == invite.id,
+        Invite.used_at.is_(None),
+        Invite.revoked_at.is_(None),
+    ).update({
+        'used_at': now,
+        'used_by_user_id': user_id,
+    })
+    return rows == 1
+
+
+def revoke_invite(_session, invite):
+    """Mark an invite as revoked.
+
+    Returns True on success, False if already used.
+    Caller must commit.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if invite.used_at is not None:
+        return False
+    rows = _session.query(Invite).filter(
+        Invite.id == invite.id,
+        Invite.used_at.is_(None),
+    ).update({
+        'revoked_at': now,
+    })
+    return rows == 1
 
 
 # Save downloaded books per user in calibre-web's own database
