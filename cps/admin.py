@@ -106,6 +106,20 @@ def admin_required(f):
     return inner
 
 
+def _get_invite_list():
+    """Return recent invites with computed status (max 20)."""
+    rows = ub.get_invite_list(ub.session, limit=20)
+    return [{
+        'created_at': r['created_at'],
+        'expires_at': r['expires_at'],
+        'created_by': r['created_by_name'],
+        'status': _('Active') if r['status'] == 'Active'
+                  else _('Used') if r['status'] == 'Used'
+                  else _('Expired') if r['status'] == 'Expired'
+                  else _('Revoked'),
+    } for r in rows]
+
+
 @admi.before_app_request
 def before_request():
     #try:
@@ -232,9 +246,40 @@ def admin():
     t = timedelta(hours=config.schedule_duration // 60, minutes=config.schedule_duration % 60)
     schedule_duration = format_timedelta(t, threshold=.99)
 
+    is_aubooks = config.config_theme == 3
+    invites = _get_invite_list() if is_aubooks else []
+
     return render_title_template("admin.html", allUser=all_user, config=config, commit=commit,
                                  feature_support=feature_support, schedule_time=schedule_time,
                                  schedule_duration=schedule_duration,
+                                 invites=invites, is_aubooks=is_aubooks,
+                                 title=_("Admin page"), page="admin")
+
+
+@admi.route("/admin/registration-link", methods=["POST"])
+@user_login_required
+@admin_required
+def create_registration_link():
+    raw_token = ub.create_invite(ub.session, created_by_user_id=current_user.id)
+    ub.session.commit()
+    invite_url = '/register/{}'.format(raw_token)
+
+    all_user = ub.session.query(ub.User).all()
+    schedule_time = format_time(datetime_time(hour=config.schedule_start_time), format="short")
+    t = timedelta(hours=config.schedule_duration // 60, minutes=config.schedule_duration % 60)
+    schedule_duration = format_timedelta(t, threshold=.99)
+    is_aubooks = config.config_theme == 3
+
+    return render_title_template("admin.html",
+                                 allUser=all_user,
+                                 config=config,
+                                 commit=updater_thread.get_current_version_info(),
+                                 feature_support=feature_support,
+                                 schedule_time=schedule_time,
+                                 schedule_duration=schedule_duration,
+                                 generated_invite_url=invite_url,
+                                 is_aubooks=is_aubooks,
+                                 invites=_get_invite_list(),
                                  title=_("Admin page"), page="admin")
 
 

@@ -751,6 +751,42 @@ def revoke_invite(_session, invite):
     return rows == 1
 
 
+def get_invite_list(_session, limit=20):
+    """Return recent invites with computed status for admin display.
+
+    Each entry: {created_at, expires_at, created_by_name, status}.
+    Status is one of: 'Active', 'Used', 'Expired', 'Revoked'.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    rows = _session.query(Invite).order_by(Invite.created_at.desc()).limit(limit).all()
+    user_cache = {}
+    result = []
+    for inv in rows:
+        if inv.used_at:
+            status = 'Used'
+        elif inv.revoked_at:
+            status = 'Revoked'
+        elif inv.expires_at <= now:
+            status = 'Expired'
+        else:
+            status = 'Active'
+        creator_name = ''
+        if inv.created_by_user_id:
+            if inv.created_by_user_id not in user_cache:
+                user_cache[inv.created_by_user_id] = _session.query(User).get(inv.created_by_user_id)
+                if not user_cache[inv.created_by_user_id]:
+                    user_cache[inv.created_by_user_id] = None
+            creator = user_cache[inv.created_by_user_id]
+            creator_name = creator.name if creator else ''
+        result.append({
+            'created_at': inv.created_at,
+            'expires_at': inv.expires_at,
+            'created_by_name': creator_name,
+            'status': status,
+        })
+    return result
+
+
 # Save downloaded books per user in calibre-web's own database
 def update_download(book_id, user_id):
     check = session.query(Downloads).filter(Downloads.user_id == user_id).filter(Downloads.book_id == book_id).first()
