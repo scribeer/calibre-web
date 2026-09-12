@@ -21,8 +21,12 @@
 - Добавлены scoped rules для Bootstrap `.text-muted`, `.help-block` и `.form-text`.
 ## Полка и обложки
 AU не имеет отдельного `shelf.html` и использует Standard fallback, который уже содержит `image.book_cover` и fallback cover endpoint. В текущем DEV theme не найдено правила, удаляющего shelf cover markup. Добавлен узкий AU selector, явно показывающий cover. Единственная DEV shelf приватная и для guest перенаправляет на главную; её настройки и пользователи не менялись. Если на production обложки останутся скрыты, нужно отдельно проверить внешний nginx/injected CSS.
+## Порядок sidebar
+- Блок полок (`Shelves` header + shelf links + `Create a Shelf`) перемещён выше genre tree в `layout.html`.
+- Старый порядок: жанры → полки. Новый порядок: полки → жанры.
+- URL, permissions и логика полок не изменены.
 ## Тесты
-- `pytest -q tests/test_aubooks_theme_templates.py`: 7 passed.
+- `pytest -q tests/test_aubooks_theme_templates.py`: 9 passed ( добавлены 2 regression tests для порядка sidebar).
 - `pytest -q tests/test_aubooks_*.py`: 335 passed, 248 subtests passed.
 - `pytest -q tests --ignore=tests/test_cmd_start_book_id.py`: 448 passed, 248 subtests passed.
 - `py_compile tests/test_aubooks_theme_templates.py`: успешно.

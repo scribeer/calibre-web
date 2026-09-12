@@ -42,6 +42,16 @@ class TestAubooksDetailActions(unittest.TestCase):
 
 
 class TestAubooksShelfPresentation(unittest.TestCase):
+    def test_shelf_appears_before_genre_navigation(self):
+        layout = source(AU_TEMPLATES / "layout.html")
+        shelf_pos = layout.index("public-shelves")
+        genre_pos = layout.index("Все жанры")
+        self.assertLess(shelf_pos, genre_pos)
+
+    def test_shelf_appears_exactly_once(self):
+        layout = source(AU_TEMPLATES / "layout.html")
+        self.assertEqual(layout.count("public-shelves"), 1)
+
     def test_standard_fallback_keeps_cover_markup(self):
         shelf = source(STANDARD_TEMPLATES / "shelf.html")
         self.assertIn('<div class="cover">', shelf)
