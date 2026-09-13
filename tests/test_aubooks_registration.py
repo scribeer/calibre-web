@@ -21,9 +21,9 @@ class TestRegisterPostAllowsWeakPasswords(unittest.TestCase):
 
     def test_no_valid_password_call_in_register_post(self):
         src = read_web_source()
-        # Find the register_post function body
+        # Password validation now lives in the shared registration helper.
         match = re.search(
-            r'def register_post\(\):(.*?)(?=\n@web\.route|\ndef [a-z])',
+            r'def _register_user\(.*?\):(.*?)(?=\n@web\.route|\ndef [a-z])',
             src, re.DOTALL,
         )
         self.assertIsNotNone(match, "register_post function not found")
@@ -37,7 +37,7 @@ class TestRegisterPostAllowsWeakPasswords(unittest.TestCase):
     def test_empty_password_rejected(self):
         src = read_web_source()
         match = re.search(
-            r'def register_post\(\):(.*?)(?=\n@web\.route|\ndef [a-z])',
+            r'def _register_user\(.*?\):(.*?)(?=\n@web\.route|\ndef [a-z])',
             src, re.DOTALL,
         )
         body = match.group(1)
@@ -50,7 +50,7 @@ class TestRegisterPostAllowsWeakPasswords(unittest.TestCase):
     def test_password_mismatch_rejected(self):
         src = read_web_source()
         match = re.search(
-            r'def register_post\(\):(.*?)(?=\n@web\.route|\ndef [a-z])',
+            r'def _register_user\(.*?\):(.*?)(?=\n@web\.route|\ndef [a-z])',
             src, re.DOTALL,
         )
         body = match.group(1)

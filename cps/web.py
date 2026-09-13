@@ -21,6 +21,7 @@
 import os
 import json
 import mimetypes
+import re
 import subprocess
 import chardet  # dependency of requests
 import copy
@@ -1405,75 +1406,94 @@ def send_to_ereader(book_id, book_format, convert):
 
 # ################################### Login Logout ##################################################################
 
-@web.route('/register', methods=['POST'])
-@limiter.limit("40/day", key_func=get_remote_address)
-@limiter.limit("3/minute", key_func=get_remote_address)
-def register_post():
-    if not config.config_public_reg:
-        abort(404)
-    to_save = request.form.to_dict()
-    if current_user is not None and current_user.is_authenticated:
-        return redirect(url_for('web.index'))
-    nickname = strip_whitespaces(to_save.get("email", "")) if config.config_register_email else to_save.get('name')
+INVITE_ERROR_MESSAGE = "Ссылка регистрации недействительна или срок её действия истёк."
+INVITE_ONLY_MESSAGE = "Регистрация доступна только по приглашению."
+INVITE_TOKEN_PATTERN = re.compile(r'^[A-Za-z0-9_-]{43}$')
+
+
+def _render_registration_form():
+    return render_title_template('register.html', config=config, title=_("Register"), page="register")
+
+
+def _invalid_invite_response():
+    flash(INVITE_ERROR_MESSAGE, category="error")
+    return redirect(url_for('web.login'))
+
+
+def _get_registration_invite(raw_token):
+    if not INVITE_TOKEN_PATTERN.fullmatch(raw_token):
+        return None
+    return ub.get_invite_by_token(ub.session, raw_token)
+
+
+def _register_user(to_save, invite=None):
+    invite_registration = invite is not None
+    nickname = (to_save.get('name') if invite_registration or not config.config_register_email
+                else strip_whitespaces(to_save.get("email", "")))
     if not nickname or not to_save.get("email"):
         flash(_("Oops! Please complete all fields."), category="error")
-        return render_title_template('register.html', title=_("Register"), page="register")
+        return _render_registration_form()
     try:
         nickname = check_username(nickname)
         email = check_email(to_save.get("email", ""))
     except Exception as ex:
         flash(str(ex), category="error")
-        return render_title_template('register.html', title=_("Register"), page="register")
+        return _render_registration_form()
 
-    # Determine password: user-chosen or random (email-based flow)
     form_password = to_save.get("password", "").strip()
     form_confirm = to_save.get("confirm_password", "").strip()
     use_user_password = bool(form_password)
-
+    if invite_registration and not use_user_password:
+        flash(_("Oops! Password cannot be empty."), category="error")
+        return _render_registration_form()
     if use_user_password:
-        if not form_password:
-            flash(_("Oops! Password cannot be empty."), category="error")
-            return render_title_template('register.html', title=_("Register"), page="register")
         if not form_confirm:
             flash(_("Oops! Please confirm your password."), category="error")
-            return render_title_template('register.html', title=_("Register"), page="register")
+            return _render_registration_form()
         if form_password != form_confirm:
             flash(_("Oops! Passwords do not match."), category="error")
-            return render_title_template('register.html', title=_("Register"), page="register")
+            return _render_registration_form()
         password = form_password
     else:
         if not config.get_mail_server_configured():
             flash(_("Oops! Email server is not configured, please contact your administrator."), category="error")
-            return render_title_template('register.html', title=_("Register"), page="register")
+            return _render_registration_form()
         password = generate_random_password(config.config_password_min_length)
 
+    if not check_valid_domain(email):
+        flash(_("Oops! Your Email is not allowed."), category="error")
+        log.warning('Registering failed for user "%s" Email: %s', nickname, to_save.get("email", ""))
+        return _render_registration_form()
+
     content = ub.User()
-    if check_valid_domain(email):
-        content.name = nickname
-        content.email = email
-        content.password = generate_password_hash(password)
-        content.role = config.config_default_role
-        content.locale = config.config_default_locale
-        content.sidebar_view = config.config_default_show
-        content.allowed_tags = config.config_allowed_tags
-        content.denied_tags = config.config_denied_tags
-        content.allowed_column_value = config.config_allowed_column_value
-        content.denied_column_value = config.config_denied_column_value
-        try:
-            ub.session.add(content)
-            ub.session.commit()
+    content.name = nickname
+    content.email = email
+    content.password = generate_password_hash(password)
+    content.role = config.config_default_role
+    content.locale = config.config_default_locale
+    content.sidebar_view = config.config_default_show
+    content.allowed_tags = config.config_allowed_tags
+    content.denied_tags = config.config_denied_tags
+    content.allowed_column_value = config.config_allowed_column_value
+    content.denied_column_value = config.config_denied_column_value
+    try:
+        ub.session.add(content)
+        if invite_registration:
+            ub.session.flush()
+            if not ub.consume_invite(ub.session, invite, content.id):
+                ub.session.rollback()
+                return _invalid_invite_response()
+        ub.session.commit()
+        if not invite_registration:
             if feature_support['oauth']:
                 register_user_with_oauth(content)
             if not use_user_password:
-                send_registration_mail(strip_whitespaces(to_save.get("email", "")), nickname, password, locale=content.locale)
-        except Exception:
-            ub.session.rollback()
-            flash(_("Oops! An unknown error occurred. Please try again later."), category="error")
-            return render_title_template('register.html', title=_("Register"), page="register")
-    else:
-        flash(_("Oops! Your Email is not allowed."), category="error")
-        log.warning('Registering failed for user "{}" Email: {}'.format(nickname, to_save.get("email","")))
-        return render_title_template('register.html', title=_("Register"), page="register")
+                send_registration_mail(email, nickname, password, locale=content.locale)
+    except Exception:
+        ub.session.rollback()
+        flash(_("Oops! An unknown error occurred. Please try again later."), category="error")
+        return _render_registration_form()
+
     if use_user_password:
         flash(_("Registration successful. You can now log in."), category="success")
     else:
@@ -1481,8 +1501,39 @@ def register_post():
     return redirect(url_for('web.login'))
 
 
+@web.route('/register', methods=['POST'])
+@limiter.limit("40/day", key_func=get_remote_address)
+@limiter.limit("3/minute", key_func=get_remote_address)
+def register_post():
+    if is_aubooks_active():
+        flash(INVITE_ONLY_MESSAGE, category="info")
+        return redirect(url_for('web.login'))
+    if not config.config_public_reg:
+        abort(404)
+    if current_user is not None and current_user.is_authenticated:
+        return redirect(url_for('web.index'))
+    return _register_user(request.form.to_dict())
+
+
+@web.route('/register/<token>', methods=['POST'])
+@limiter.limit("40/day", key_func=get_remote_address)
+@limiter.limit("3/minute", key_func=get_remote_address)
+def register_invite_post(token):
+    if current_user is not None and current_user.is_authenticated:
+        return redirect(url_for('web.index'))
+    if not is_aubooks_active():
+        abort(404)
+    invite = _get_registration_invite(token)
+    if invite is None:
+        return _invalid_invite_response()
+    return _register_user(request.form.to_dict(), invite=invite)
+
+
 @web.route('/register', methods=['GET'])
 def register():
+    if is_aubooks_active():
+        flash(INVITE_ONLY_MESSAGE, category="info")
+        return redirect(url_for('web.login'))
     if not config.config_public_reg:
         abort(404)
     if current_user is not None and current_user.is_authenticated:
@@ -1493,6 +1544,17 @@ def register():
     if feature_support['oauth']:
         register_user_with_oauth()
     return render_title_template('register.html', config=config, title=_("Register"), page="register")
+
+
+@web.route('/register/<token>', methods=['GET'])
+def register_invite(token):
+    if current_user is not None and current_user.is_authenticated:
+        return redirect(url_for('web.index'))
+    if not is_aubooks_active():
+        abort(404)
+    if _get_registration_invite(token) is None:
+        return _invalid_invite_response()
+    return _render_registration_form()
 
 
 def handle_login_user(user, remember, message, category):

@@ -101,9 +101,8 @@
                   <li><a id="logout" href="{{url_for('web.logout', next=(request.path + "?" + request.query_string.decode("utf-8")).rstrip("?"))}}" aria-label="{{_('Logout')}}"><span class="glyphicon glyphicon-log-out" aria-hidden="true"></span> <span class="hidden-sm">{{_('Logout')}}</span></a></li>
                   {% endif %}
               {% endif %}
-              {% if g.allow_registration and not current_user.is_authenticated %}
+              {% if not current_user.is_authenticated and not g.allow_anonymous %}
               <li><a id="login" href="{{url_for('web.login')}}"><span class="glyphicon glyphicon-log-in" aria-hidden="true"></span> {{_('Login')}}</a></li>
-              <li><a id="register" href="{{url_for('web.register')}}"><span class="glyphicon glyphicon-user" aria-hidden="true"></span> {{_('Register')}}</a></li>
               {% endif %}
             </ul>
           </div><!--/.nav-collapse -->

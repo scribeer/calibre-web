@@ -303,15 +303,15 @@ class TestSafeNextAndAubooksTemplates(unittest.TestCase):
                 "/",
             )
 
-    def test_guest_detail_controls_and_login_registration_link(self):
+    def test_guest_detail_controls_and_invite_only_login_message(self):
         root = Path(__file__).parent.parent / "cps" / "themes"
         detail = (root / "aubooks" / "templates" / "detail.html").read_text()
         login = (root / "aubooks" / "templates" / "login.html").read_text()
         self.assertIn("Скачать книгу", detail)
         self.assertIn("Generate audio", detail)
         self.assertIn("aubooks_login_url", detail)
-        self.assertIn("Don\\'t have an account? Register", login)
-        self.assertIn("config.config_public_reg", login)
+        self.assertIn("Регистрация доступна по приглашению.", login)
+        self.assertNotIn("web.register", login)
 
     def test_guest_polling_transitions_keep_login_actions(self):
         detail = (Path(__file__).parent.parent / "cps" / "themes" / "aubooks" /
@@ -322,7 +322,7 @@ class TestSafeNextAndAubooksTemplates(unittest.TestCase):
         self.assertIn("'{{ _(\"Озвучить повторно\") }}'", detail)
         self.assertIn("'{{ _(\"Озвучить\") }}'", detail)
 
-    def test_registration_link_is_rendered_only_when_enabled(self):
+    def test_invite_only_message_replaces_public_registration_link(self):
         source = (Path(__file__).parent.parent / "cps" / "themes" / "aubooks" /
                   "templates" / "login.html").read_text()
         env = Environment(loader=DictLoader({
@@ -348,10 +348,12 @@ class TestSafeNextAndAubooksTemplates(unittest.TestCase):
         disabled = SimpleNamespace(
             config_public_reg=False, config_login_type=0, config_remote_login=False
         )
-        self.assertIn("Don't have an account? Register",
-                      env.get_template("login.html").render(config=enabled, **context))
-        self.assertNotIn("Don't have an account? Register",
-                         env.get_template("login.html").render(config=disabled, **context))
+        enabled_html = env.get_template("login.html").render(config=enabled, **context)
+        disabled_html = env.get_template("login.html").render(config=disabled, **context)
+        self.assertIn("Регистрация доступна по приглашению.", enabled_html)
+        self.assertIn("Регистрация доступна по приглашению.", disabled_html)
+        self.assertNotIn("Don't have an account? Register", enabled_html)
+        self.assertNotIn("Don't have an account? Register", disabled_html)
 
     def test_standard_theme_is_untouched_by_aubooks_controls(self):
         root = Path(__file__).parent.parent / "cps" / "themes" / "standard" / "templates"

@@ -17,6 +17,8 @@
 #  along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 from tornado.wsgi import WSGIContainer
+import re
+
 import tornado
 
 from tornado import escape
@@ -111,10 +113,15 @@ class MyWSGIContainer(WSGIContainer):
         assert request.method is not None
         assert request.uri is not None
         ip = self.env.get("HTTP_FORWARD_FOR", None) or request.remote_ip
+        safe_uri = re.sub(
+            r'(/register/)[A-Za-z0-9_-]{43}(?=\?|$)',
+            r'\1<redacted>',
+            request.uri,
+        )
         summary = (
             request.method  # type: ignore[operator]
             + " "
-            + request.uri
+            + safe_uri
             + " ("
             + ip
             + ")"

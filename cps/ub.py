@@ -726,6 +726,7 @@ def consume_invite(_session, invite, user_id):
         Invite.id == invite.id,
         Invite.used_at.is_(None),
         Invite.revoked_at.is_(None),
+        Invite.expires_at > now,
     ).update({
         'used_at': now,
         'used_by_user_id': user_id,
