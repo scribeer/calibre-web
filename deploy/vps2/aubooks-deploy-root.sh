@@ -27,6 +27,8 @@ bundle_dir="$STAGING_BASE/aubooks-calibre-web-$sha/deploy-bundle"
 helper="$bundle_dir/$HELPER_NAME"
 [[ -f "$helper" ]] || fail 'helper is missing from bundle'
 [[ ! -L "$helper" ]] || fail 'helper must not be a symlink'
-[[ "$(stat -c '%a' "$helper")" =~ ^[0-7][0-7][0-5]$ ]] || fail 'helper has unsafe permissions'
+[[ -x "$helper" ]] || fail 'helper is not executable'
+mode="$(stat -c '%a' "$helper")"
+[[ "${mode: -1}" != "6" && "${mode: -1}" != "7" ]] || fail 'helper is world-writable'
 
 exec "$helper" --bundle-dir "$bundle_dir" --commit-sha "$sha"

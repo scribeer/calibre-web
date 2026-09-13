@@ -121,7 +121,10 @@ with tarfile.open(archive_path, "r:*") as tar:
                 member.name, member.size, len(content)))
         target = bundle_dir / member.name
         target.write_bytes(content)
-        os.chmod(target, 0o644)
+        if member.name == "deploy-calibre-web-release.sh":
+            os.chmod(target, 0o755)
+        else:
+            os.chmod(target, 0o644)
 
 for entry in bundle_dir.iterdir():
     if entry.is_symlink():

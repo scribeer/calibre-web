@@ -323,6 +323,23 @@ class DispatcherUploadTest(unittest.TestCase):
         self.assertTrue(bundle.is_dir())
         self.assertEqual(len(list(bundle.iterdir())), 5)
 
+    def test_upload_sets_helper_executable(self):
+        tar_data = self.make_tar({
+            self.wheel_name: b"wheel data",
+            "SHA256SUMS": "abc  {}\n".format(self.wheel_name),
+            "artifact-manifest.json": "{}",
+            "deploy-request.json": "{}",
+            "deploy-calibre-web-release.sh": "#!/usr/bin/env bash\necho ok\n",
+        })
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        helper = bundle / "deploy-calibre-web-release.sh"
+        self.assertEqual(oct(helper.stat().st_mode)[-3:], "755")
+        for name in (self.wheel_name, "SHA256SUMS", "artifact-manifest.json", "deploy-request.json"):
+            mode = oct((bundle / name).stat().st_mode)[-3:]
+            self.assertTrue(int(mode, 8) & 0o111 == 0, "{} should not be executable, got {}".format(name, mode))
+
     def test_upload_rejects_traversal_path(self):
         tar_data = self.make_tar({"../etc/passwd": b"root:x:0:0:"})
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
@@ -581,7 +598,17 @@ class RootWrapperTest(unittest.TestCase):
         helper.chmod(0o777)
         result = self.run_wrapper("{}\n".format(VALID_SHA))
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("unsafe permissions", result.stderr)
+        self.assertIn("world-writable", result.stderr)
+
+    def test_helper_not_executable_rejected(self):
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        bundle.mkdir(parents=True)
+        helper = bundle / "deploy-calibre-web-release.sh"
+        helper.write_text("#!/usr/bin/env bash\n")
+        helper.chmod(0o644)
+        result = self.run_wrapper("{}\n".format(VALID_SHA))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not executable", result.stderr)
 
 
 class DispatcherScriptTest(unittest.TestCase):
