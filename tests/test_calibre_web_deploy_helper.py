@@ -314,13 +314,14 @@ class DispatcherUploadTest(unittest.TestCase):
             "SHA256SUMS": "abc  {}\n".format(self.wheel_name),
             "artifact-manifest.json": "{}",
             "deploy-request.json": "{}",
+            "deploy-calibre-web-release.sh": "#!/usr/bin/env bash\n",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("upload {} OK".format(VALID_SHA).encode(), result.stdout)
         bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
         self.assertTrue(bundle.is_dir())
-        self.assertEqual(len(list(bundle.iterdir())), 4)
+        self.assertEqual(len(list(bundle.iterdir())), 5)
 
     def test_upload_rejects_traversal_path(self):
         tar_data = self.make_tar({"../etc/passwd": b"root:x:0:0:"})
@@ -390,6 +391,9 @@ class DispatcherUploadTest(unittest.TestCase):
             info = tarfile.TarInfo(name="deploy-request.json")
             info.size = 2
             tar.addfile(info, io.BytesIO(b"{}"))
+            info = tarfile.TarInfo(name="deploy-calibre-web-release.sh")
+            info.size = 4
+            tar.addfile(info, io.BytesIO(b"exec"))
         result = self.run_dispatcher("upload {}".format(VALID_SHA), buf.getvalue())
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"duplicate filename", result.stderr)
@@ -400,6 +404,7 @@ class DispatcherUploadTest(unittest.TestCase):
             "calibreweb-0.6.28b.whl": b"b",
             "SHA256SUMS": b"s",
             "artifact-manifest.json": b"{}",
+            "deploy-calibre-web-release.sh": b"#!/usr/bin/env bash\n",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertNotEqual(result.returncode, 0)
@@ -411,7 +416,7 @@ class DispatcherUploadTest(unittest.TestCase):
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn(b"expected exactly 4", result.stderr)
+        self.assertIn(b"expected exactly 5", result.stderr)
 
     def test_upload_rejects_unexpected_file(self):
         tar_data = self.make_tar({
@@ -419,11 +424,12 @@ class DispatcherUploadTest(unittest.TestCase):
             "SHA256SUMS": b"s",
             "artifact-manifest.json": b"{}",
             "deploy-request.json": b"{}",
+            "deploy-calibre-web-release.sh": b"#!/usr/bin/env bash\n",
             "evil.txt": b"malicious",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn(b"expected exactly 4", result.stderr)
+        self.assertIn(b"expected exactly 5", result.stderr)
 
     def test_upload_rejects_empty_archive(self):
         buf = io.BytesIO()
@@ -438,6 +444,7 @@ class DispatcherUploadTest(unittest.TestCase):
             "SHA256SUMS": b"s",
             "artifact-manifest.json": b"{}",
             "deploy-request.json": b"{}",
+            "deploy-calibre-web-release.sh": b"#!/usr/bin/env bash\n",
         })
         result1 = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertEqual(result1.returncode, 0, result1.stderr)
@@ -475,7 +482,6 @@ class RootWrapperTest(unittest.TestCase):
 
     def run_wrapper(self, stdin_text):
         env = self.env.copy()
-        env["HELPER"] = str(self.fake_helper)
         result = subprocess.run(
             ["bash", str(ROOT_WRAPPER)],
             input=stdin_text,
@@ -536,6 +542,9 @@ class RootWrapperTest(unittest.TestCase):
     def test_valid_sha_derives_exact_path(self):
         bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
         bundle.mkdir(parents=True)
+        helper = bundle / "deploy-calibre-web-release.sh"
+        helper.write_text("#!/usr/bin/env bash\nprintf 'HELPER_INVOKED\\n'\n")
+        helper.chmod(0o755)
         result = self.run_wrapper("{}\n".format(VALID_SHA))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("HELPER_INVOKED", result.stdout)
@@ -544,6 +553,35 @@ class RootWrapperTest(unittest.TestCase):
         result = self.run_wrapper("{}\n".format(VALID_SHA))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("does not exist", result.stderr)
+
+    def test_helper_missing_from_bundle_rejected(self):
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        bundle.mkdir(parents=True)
+        result = self.run_wrapper("{}\n".format(VALID_SHA))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("helper is missing", result.stderr)
+
+    def test_helper_symlink_rejected(self):
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        bundle.mkdir(parents=True)
+        real_helper = self.base / "real-helper"
+        real_helper.write_text("#!/usr/bin/env bash\n")
+        real_helper.chmod(0o755)
+        helper = bundle / "deploy-calibre-web-release.sh"
+        helper.symlink_to(real_helper)
+        result = self.run_wrapper("{}\n".format(VALID_SHA))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must not be a symlink", result.stderr)
+
+    def test_helper_unsafe_permissions_rejected(self):
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        bundle.mkdir(parents=True)
+        helper = bundle / "deploy-calibre-web-release.sh"
+        helper.write_text("#!/usr/bin/env bash\n")
+        helper.chmod(0o777)
+        result = self.run_wrapper("{}\n".format(VALID_SHA))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsafe permissions", result.stderr)
 
 
 class DispatcherScriptTest(unittest.TestCase):

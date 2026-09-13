@@ -8,6 +8,7 @@ readonly STAGING_BASE="${STAGING_BASE:-/var/tmp}"
 readonly MAX_ARCHIVE_BYTES=$((512 * 1024 * 1024))
 readonly MAX_WHEEL_BYTES=$((256 * 1024 * 1024))
 readonly MAX_METADATA_BYTES=$((256 * 1024))
+readonly MAX_HELPER_BYTES=$((256 * 1024))
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -44,7 +45,7 @@ case "$verb" in
     archive_size="$(stat -c '%s' "$tmp_archive")"
     (( archive_size <= MAX_ARCHIVE_BYTES )) || fail "archive exceeds maximum size: ${archive_size} bytes"
     (( archive_size > 0 )) || fail 'archive is empty'
-    python3 - "$tmp_archive" "$bundle_dir" "$DEPLOY_USER" "$MAX_WHEEL_BYTES" "$MAX_METADATA_BYTES" <<'PY'
+    python3 - "$tmp_archive" "$bundle_dir" "$DEPLOY_USER" "$MAX_WHEEL_BYTES" "$MAX_METADATA_BYTES" "$MAX_HELPER_BYTES" <<'PY'
 import os
 import sys
 import tarfile
@@ -55,8 +56,9 @@ bundle_dir = Path(sys.argv[2])
 deploy_user = sys.argv[3]
 max_wheel = int(sys.argv[4])
 max_metadata = int(sys.argv[5])
+max_helper = int(sys.argv[6])
 
-ALLOWED_NAMES = {"SHA256SUMS", "artifact-manifest.json", "deploy-request.json"}
+ALLOWED_NAMES = {"SHA256SUMS", "artifact-manifest.json", "deploy-request.json", "deploy-calibre-web-release.sh"}
 ALLOWED_EXTS = {".whl"}
 
 def validate_member(member):
@@ -77,8 +79,8 @@ def validate_member(member):
 
 with tarfile.open(archive_path, "r:*") as tar:
     members = tar.getmembers()
-    if len(members) != 4:
-        raise SystemExit("expected exactly 4 archive members, found {}".format(len(members)))
+    if len(members) != 5:
+        raise SystemExit("expected exactly 5 archive members, found {}".format(len(members)))
 
     seen = set()
     for member in members:
@@ -88,15 +90,21 @@ with tarfile.open(archive_path, "r:*") as tar:
         seen.add(member.name)
 
         is_wheel = member.name.startswith("calibreweb-") and member.name.endswith(".whl")
+        is_helper = member.name == "deploy-calibre-web-release.sh"
         is_metadata = member.name in ALLOWED_NAMES
 
-        if not (is_wheel or is_metadata):
+        if not (is_wheel or is_helper or is_metadata):
             raise SystemExit("unexpected file rejected: {}".format(member.name))
 
         if is_wheel and len(seen - ALLOWED_NAMES) > 1:
             raise SystemExit("expected exactly one wheel, found extra: {}".format(member.name))
 
-        limit = max_wheel if is_wheel else max_metadata
+        if is_wheel:
+            limit = max_wheel
+        elif is_helper:
+            limit = max_helper
+        else:
+            limit = max_metadata
         if member.size > limit:
             raise SystemExit("file exceeds size limit: {} ({} bytes)".format(member.name, member.size))
 
