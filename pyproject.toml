@@ -125,6 +125,16 @@ cps = "calibreweb.__main__:main"
 
 [tool.setuptools]
 include-package-data = true
+packages = [
+    "calibreweb",
+    "calibreweb.cps",
+    "calibreweb.cps.cw_advocate",
+    "calibreweb.cps.cw_login",
+    "calibreweb.cps.metadata_provider",
+    "calibreweb.cps.services",
+    "calibreweb.cps.tasks",
+]
+package-dir = {calibreweb = "calibreweb", "calibreweb.cps" = "cps"}
 
 [tool.setuptools.dynamic]
 version = {attr = "calibreweb.cps.constants.STABLE_VERSION"}

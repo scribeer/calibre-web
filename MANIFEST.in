@@ -1,3 +1,4 @@
-graft src/calibreweb
+graft calibreweb
+graft cps
 global-exclude __pycache__
 global-exclude *.pyc
