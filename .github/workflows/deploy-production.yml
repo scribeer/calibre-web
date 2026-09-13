@@ -156,7 +156,7 @@ jobs:
           from zipfile import ZipFile
 
           artifact_dir = Path(os.environ["ARTIFACT_DIR"])
-          expected_files = {"SHA256SUMS", "artifact-manifest.json"}
+          expected_files = {"SHA256SUMS", "artifact-manifest.json", "deploy-calibre-web-release.sh"}
           missing = sorted(name for name in expected_files if not (artifact_dir / name).is_file())
           if missing:
               raise SystemExit("Artifact files missing: {}".format(", ".join(missing)))
@@ -183,6 +183,11 @@ jobs:
           digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
           if digest != manifest.get("wheel_sha256"):
               raise SystemExit("Manifest wheel_sha256 mismatch")
+
+          helper = artifact_dir / "deploy-calibre-web-release.sh"
+          helper_digest = hashlib.sha256(helper.read_bytes()).hexdigest()
+          if helper_digest != manifest.get("helper_sha256"):
+              raise SystemExit("Manifest helper_sha256 mismatch")
 
           with ZipFile(wheel) as archive:
               bad_file = archive.testzip()
@@ -239,6 +244,7 @@ jobs:
         run: |
           mkdir -p "$BUNDLE_DIR"
           cp "$ARTIFACT_DIR/$WHEEL_FILENAME" "$ARTIFACT_DIR/SHA256SUMS" "$ARTIFACT_DIR/artifact-manifest.json" "$BUNDLE_DIR/"
+          cp "$ARTIFACT_DIR/deploy-calibre-web-release.sh" "$BUNDLE_DIR/deploy-calibre-web-release.sh"
           python - <<'PY'
           import json
           import os
@@ -319,11 +325,11 @@ jobs:
             -o StrictHostKeyChecking=yes
             -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts"
           )
-          for f in "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json; do
+          for f in "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json deploy-calibre-web-release.sh; do
             [[ -f "$BUNDLE_DIR/$f" ]] || { printf 'bundle file missing: %s\n' "$f" >&2; exit 1; }
           done
           tar -C "$BUNDLE_DIR" -cf - \
-            "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json \
+            "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json deploy-calibre-web-release.sh \
           | ssh "${ssh_options[@]}" -- "$target" "upload $COMMIT_SHA"
       - name: Invoke deploy via forced-command protocol
         env:
