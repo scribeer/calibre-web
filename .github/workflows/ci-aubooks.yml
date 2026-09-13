@@ -1,0 +1,269 @@
+name: AU-Books CI
+
+on:
+  push:
+    branches:
+      - aubooks
+  pull_request:
+    branches:
+      - aubooks
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-aubooks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.12"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest==8.3.5
+      - name: Compile Python sources
+        run: python -m compileall -q cps calibreweb
+      - name: Run hermetic tests
+        run: |
+          python -m pytest -q \
+            tests/test_invite_model.py \
+            tests/test_invite_registration.py \
+            tests/test_invite_admin.py \
+            tests/test_aubooks_registration.py \
+            tests/test_aubooks_theme_templates.py
+
+  build:
+    name: Build and verify wheel
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install build frontend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build==1.6.1
+      - name: Build wheel
+        run: python -m build --wheel
+      - name: Locate wheel
+        id: wheel
+        run: |
+          wheel_path="$(python - <<'PY'
+          from pathlib import Path
+
+          wheels = list(Path("dist").glob("calibreweb-*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit("Expected exactly one calibreweb wheel, found {}".format(len(wheels)))
+          print(wheels[0])
+          PY
+          )"
+          echo "path=${wheel_path}" >> "$GITHUB_OUTPUT"
+          echo "filename=$(basename "$wheel_path")" >> "$GITHUB_OUTPUT"
+      - name: Verify wheel archive and contents
+        id: verify
+        env:
+          WHEEL_PATH: ${{ steps.wheel.outputs.path }}
+        run: |
+          python - <<'PY'
+          import configparser
+          import hashlib
+          import os
+          from pathlib import PurePosixPath
+          from zipfile import ZipFile
+
+          wheel_path = os.environ["WHEEL_PATH"]
+          with open(wheel_path, "rb") as wheel_file:
+              digest = hashlib.sha256(wheel_file.read()).hexdigest()
+
+          with ZipFile(wheel_path) as archive:
+              bad_file = archive.testzip()
+              if bad_file is not None:
+                  raise SystemExit("Corrupt file in wheel: {}".format(bad_file))
+              names = set(archive.namelist())
+
+              required_files = {
+                  "calibreweb/__init__.py",
+                  "calibreweb/__main__.py",
+                  "calibreweb/cps/themes.py",
+                  "calibreweb/cps/static/css/aubooks.css",
+                  "calibreweb/cps/aubooks_audio.py",
+                  "calibreweb/cps/aubooks_genres.py",
+                  "calibreweb/cps/aubooks_permissions.py",
+                  "calibreweb/cps/aubooks_tts.py",
+                  "calibreweb/cps/ub.py",
+              }
+              required_templates = {
+                  "author.html",
+                  "detail.html",
+                  "grid.html",
+                  "index.html",
+                  "layout.html",
+                  "list.html",
+                  "login.html",
+                  "modal_dialogs.html",
+                  "register.html",
+                  "search.html",
+                  "tasks.html",
+                  "_book_card.html",
+              }
+              template_prefix = "calibreweb/cps/themes/aubooks/templates/"
+              required_files.update(template_prefix + name for name in required_templates)
+              missing = sorted(required_files - names)
+              if missing:
+                  raise SystemExit("Missing required wheel files: {}".format(", ".join(missing)))
+              if not any(name.startswith("calibreweb/cps/") for name in names):
+                  raise SystemExit("calibreweb/cps package is missing")
+              if any("library" in PurePosixPath(name).parts for name in names):
+                  raise SystemExit("library/ must not be packaged")
+
+              invite_source = archive.read("calibreweb/cps/ub.py").decode("utf-8")
+              for symbol in (
+                  "class Invite",
+                  "def create_invite",
+                  "def get_invite_by_token",
+                  "def consume_invite",
+                  "def revoke_invite",
+              ):
+                  if symbol not in invite_source:
+                      raise SystemExit("Invite implementation is missing: {}".format(symbol))
+
+              entry_points = [name for name in names if name.endswith(".dist-info/entry_points.txt")]
+              if len(entry_points) != 1:
+                  raise SystemExit("Expected one entry_points.txt, found {}".format(len(entry_points)))
+              parser = configparser.ConfigParser()
+              parser.read_string(archive.read(entry_points[0]).decode("utf-8"))
+              if parser.get("console_scripts", "cps", fallback="").strip() != "calibreweb.__main__:main":
+                  raise SystemExit("cps console entry point is missing or invalid")
+
+          print("Verified {} (sha256: {})".format(wheel_path, digest))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("sha256={}\n".format(digest))
+          PY
+      - name: Install wheel in clean environment
+        env:
+          WHEEL_PATH: ${{ steps.wheel.outputs.path }}
+        run: |
+          python -m venv "$RUNNER_TEMP/calibreweb-wheel-venv"
+          "$RUNNER_TEMP/calibreweb-wheel-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/calibreweb-wheel-venv/bin/python" -m pip install "$GITHUB_WORKSPACE/$WHEEL_PATH"
+          mkdir -p "$RUNNER_TEMP/calibreweb-wheel-check"
+      - name: Verify installed wheel outside checkout
+        working-directory: ${{ runner.temp }}/calibreweb-wheel-check
+        run: |
+          "$RUNNER_TEMP/calibreweb-wheel-venv/bin/cps" --help
+          "$RUNNER_TEMP/calibreweb-wheel-venv/bin/python" - <<'PY'
+          import os
+          from pathlib import Path
+          import sys
+
+          checkout = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+          resolved_sys_path = []
+          for entry in sys.path:
+              resolved = Path(entry or os.getcwd()).resolve()
+              resolved_sys_path.append(resolved)
+          if any(path == checkout or checkout in path.parents for path in resolved_sys_path):
+              raise SystemExit("Checkout is present in sys.path: {}".format(sys.path))
+
+          import calibreweb
+          from calibreweb.cps import (
+              aubooks_audio,
+              aubooks_genres,
+              aubooks_permissions,
+              aubooks_tts,
+              themes,
+              ub,
+          )
+
+          package_path = Path(calibreweb.__file__).resolve()
+          if package_path == checkout or checkout in package_path.parents:
+              raise SystemExit("calibreweb was imported from checkout: {}".format(package_path))
+          theme = themes.get_theme(3)
+          assert theme["id"] == 3
+          assert theme["identifier"] == "aubooks"
+          assert ub.Invite
+          for helper in (
+              ub.create_invite,
+              ub.get_invite_by_token,
+              ub.consume_invite,
+              ub.revoke_invite,
+          ):
+              assert callable(helper)
+          for module in (aubooks_audio, aubooks_genres, aubooks_permissions, aubooks_tts):
+              assert module.__name__.startswith("calibreweb.cps.aubooks_")
+          print("Installed package verified at {}".format(package_path))
+          PY
+      - name: Create artifact manifest
+        env:
+          WHEEL_PATH: ${{ steps.wheel.outputs.path }}
+          WHEEL_FILENAME: ${{ steps.wheel.outputs.filename }}
+          WHEEL_SHA256: ${{ steps.verify.outputs.sha256 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/calibreweb-artifact"
+          cp "$WHEEL_PATH" "$RUNNER_TEMP/calibreweb-artifact/$WHEEL_FILENAME"
+          "$RUNNER_TEMP/calibreweb-wheel-venv/bin/python" - <<'PY'
+          import hashlib
+          from importlib.metadata import version
+          import json
+          import os
+          from pathlib import Path
+          import platform
+          from datetime import datetime, timezone
+
+          artifact_dir = Path(os.environ["RUNNER_TEMP"]) / "calibreweb-artifact"
+          wheel_filename = os.environ["WHEEL_FILENAME"]
+          wheel_path = artifact_dir / wheel_filename
+          wheel_sha256 = hashlib.sha256(wheel_path.read_bytes()).hexdigest()
+          if wheel_sha256 != os.environ["WHEEL_SHA256"]:
+              raise SystemExit("Wheel checksum changed while preparing artifact")
+
+          manifest = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit_sha": os.environ["GITHUB_SHA"],
+              "ref": os.environ["GITHUB_REF"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "wheel_filename": wheel_filename,
+              "wheel_sha256": wheel_sha256,
+              "package_version": version("calibreweb"),
+              "python_version": platform.python_version(),
+              "build_time_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+          }
+          (artifact_dir / "artifact-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          (artifact_dir / "SHA256SUMS").write_text(
+              "{}  {}\n".format(wheel_sha256, wheel_filename),
+              encoding="ascii",
+          )
+          PY
+      - name: Upload commit wheel
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: calibreweb-aubooks-${{ github.sha }}
+          path: ${{ runner.temp }}/calibreweb-artifact/
+          if-no-files-found: error
+          retention-days: 90
