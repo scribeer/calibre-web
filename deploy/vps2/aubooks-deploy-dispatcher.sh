@@ -132,7 +132,6 @@ PY
     ;;
   deploy)
     [[ -d "$bundle_dir" ]] || fail 'bundle directory does not exist; upload first'
-    [[ "$(id -u)" == "0" ]] || fail 'dispatcher must run as root for deploy'
     owner="$(stat -c '%U' "$bundle_dir")"
     [[ "$owner" == "$DEPLOY_USER" ]] || fail 'bundle directory has unexpected owner'
     printf '%s\n' "$sha" | sudo -n "$ROOT_WRAPPER"
