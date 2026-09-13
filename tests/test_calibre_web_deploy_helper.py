@@ -1,6 +1,7 @@
 """Hermetic contract tests for the production Calibre-Web deploy stack."""
 
 import hashlib
+import io
 import json
 import os
 import re
@@ -232,7 +233,7 @@ class DeployHelperTest(unittest.TestCase):
         self.assertIn("--commit-sha", result.stderr)
 
 
-class DispatcherTest(unittest.TestCase):
+class DispatcherUploadTest(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.base = Path(self.temp_dir.name)
@@ -260,19 +261,27 @@ class DispatcherTest(unittest.TestCase):
         )
 
     def make_tar(self, files):
-        tar_path = self.base / "bundle.tar"
-        with tarfile.open(tar_path, "w") as tar:
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
             for name, data in files.items():
-                import io
-                info = tarfile.TarInfo(name=name)
                 if isinstance(data, bytes):
-                    info.size = len(data)
-                    tar.addfile(info, io.BytesIO(data))
+                    content = data
                 else:
-                    encoded = data.encode("utf-8")
-                    info.size = len(encoded)
-                    tar.addfile(info, io.BytesIO(encoded))
-        return tar_path.read_bytes()
+                    content = data.encode("utf-8")
+                info = tarfile.TarInfo(name=name)
+                info.size = len(content)
+                tar.addfile(info, io.BytesIO(content))
+        return buf.getvalue()
+
+    def make_tar_from_path(self, name, data_bytes, **tarinfo_kwargs):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data_bytes)
+            for k, v in tarinfo_kwargs.items():
+                setattr(info, k, v)
+            tar.addfile(info, io.BytesIO(data_bytes))
+        return buf.getvalue()
 
     def test_empty_command_rejected(self):
         result = self.run_dispatcher("")
@@ -313,65 +322,122 @@ class DispatcherTest(unittest.TestCase):
         self.assertTrue(bundle.is_dir())
         self.assertEqual(len(list(bundle.iterdir())), 4)
 
-    def test_upload_rejects_extra_file(self):
-        tar_data = self.make_tar({
-            self.wheel_name: b"wheel data",
-            "SHA256SUMS": "abc  {}\n".format(self.wheel_name),
-            "artifact-manifest.json": "{}",
-            "deploy-request.json": "{}",
-            "evil.txt": "malicious",
-        })
-        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
-        self.assertEqual(sorted(f.name for f in bundle.iterdir()), sorted([
-            "SHA256SUMS",
-            "artifact-manifest.json",
-            "deploy-request.json",
-            self.wheel_name,
-        ]))
-
     def test_upload_rejects_traversal_path(self):
-        tar_data = self.make_tar({
-            "../etc/passwd": "root:x:0:0:",
-        })
+        tar_data = self.make_tar({"../etc/passwd": b"root:x:0:0:"})
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertNotEqual(result.returncode, 0)
-
-    def test_upload_rejects_symlink(self):
-        tar_path = self.base / "bundle.tar"
-        with tarfile.open(tar_path, "w") as tar:
-            import io
-            link = tarfile.TarInfo(name="evil-symlink")
-            link.type = tarfile.SYMTYPE
-            link.linkname = "/etc/passwd"
-            tar.addfile(link)
-        tar_data = tar_path.read_bytes()
-        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
-        self.assertNotEqual(result.returncode, 0)
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        self.assertFalse(bundle.exists())
 
     def test_upload_rejects_absolute_path(self):
-        tar_path = self.base / "bundle.tar"
-        with tarfile.open(tar_path, "w") as tar:
-            import io
-            info = tarfile.TarInfo(name="/etc/passwd")
-            info.size = 5
-            tar.addfile(info, io.BytesIO(b"rootxx"))
-        tar_data = tar_path.read_bytes()
+        tar_data = self.make_tar_from_path("/etc/passwd", b"rootxx")
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
+        self.assertNotEqual(result.returncode, 0)
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        self.assertFalse(bundle.exists())
+
+    def test_upload_rejects_symlink(self):
+        tar_data = self.make_tar_from_path(
+            "evil-symlink", b"",
+            type=tarfile.SYMTYPE, linkname="/etc/passwd",
+        )
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
+        self.assertNotEqual(result.returncode, 0)
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        self.assertFalse(bundle.exists())
+
+    def test_upload_rejects_hardlink(self):
+        tar_data = self.make_tar_from_path(
+            "evil-hardlink", b"",
+            type=tarfile.LNKTYPE, linkname="/etc/passwd",
+        )
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
+        self.assertNotEqual(result.returncode, 0)
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        self.assertFalse(bundle.exists())
+
+    def test_upload_rejects_fifo(self):
+        tar_data = self.make_tar_from_path("evil-fifo", b"", type=tarfile.FIFOTYPE)
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
+        self.assertNotEqual(result.returncode, 0)
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        self.assertFalse(bundle.exists())
+
+    def test_upload_rejects_directory(self):
+        tar_data = self.make_tar_from_path("subdir", b"", type=tarfile.DIRTYPE)
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
+        self.assertNotEqual(result.returncode, 0)
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        self.assertFalse(bundle.exists())
+
+    def test_upload_rejects_nested_path(self):
+        tar_data = self.make_tar({"subdir/file.txt": b"data"})
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
+        self.assertNotEqual(result.returncode, 0)
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        self.assertFalse(bundle.exists())
+
+    def test_upload_rejects_duplicate_filename(self):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            for _ in range(2):
+                info = tarfile.TarInfo(name="SHA256SUMS")
+                info.size = 4
+                tar.addfile(info, io.BytesIO(b"data"))
+            info = tarfile.TarInfo(name="artifact-manifest.json")
+            info.size = 2
+            tar.addfile(info, io.BytesIO(b"{}"))
+            info = tarfile.TarInfo(name="deploy-request.json")
+            info.size = 2
+            tar.addfile(info, io.BytesIO(b"{}"))
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), buf.getvalue())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"duplicate filename", result.stderr)
+
+    def test_upload_rejects_two_wheels(self):
+        tar_data = self.make_tar({
+            "calibreweb-0.6.28a.whl": b"a",
+            "calibreweb-0.6.28b.whl": b"b",
+            "SHA256SUMS": b"s",
+            "artifact-manifest.json": b"{}",
+        })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertNotEqual(result.returncode, 0)
 
-    def test_deploy_before_upload_rejected(self):
-        result = self.run_dispatcher("deploy {}".format(VALID_SHA))
+    def test_upload_rejects_wrong_member_count(self):
+        tar_data = self.make_tar({
+            self.wheel_name: b"wheel data",
+            "SHA256SUMS": b"s",
+        })
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn(b"does not exist", result.stderr)
+        self.assertIn(b"expected exactly 4", result.stderr)
+
+    def test_upload_rejects_unexpected_file(self):
+        tar_data = self.make_tar({
+            self.wheel_name: b"wheel data",
+            "SHA256SUMS": b"s",
+            "artifact-manifest.json": b"{}",
+            "deploy-request.json": b"{}",
+            "evil.txt": b"malicious",
+        })
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"expected exactly 4", result.stderr)
+
+    def test_upload_rejects_empty_archive(self):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            pass
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), buf.getvalue())
+        self.assertNotEqual(result.returncode, 0)
 
     def test_upload_idempotent_rejected(self):
         tar_data = self.make_tar({
             self.wheel_name: b"wheel data",
-            "SHA256SUMS": "abc  {}\n".format(self.wheel_name),
-            "artifact-manifest.json": "{}",
-            "deploy-request.json": "{}",
+            "SHA256SUMS": b"s",
+            "artifact-manifest.json": b"{}",
+            "deploy-request.json": b"{}",
         })
         result1 = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertEqual(result1.returncode, 0, result1.stderr)
@@ -379,48 +445,151 @@ class DispatcherTest(unittest.TestCase):
         self.assertNotEqual(result2.returncode, 0)
         self.assertIn(b"already exists", result2.stderr)
 
+    def test_failed_upload_cleans_staging(self):
+        tar_data = self.make_tar({"bad.txt": b"bad"})
+        result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
+        self.assertNotEqual(result.returncode, 0)
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        self.assertFalse(bundle.exists())
+
+    def test_deploy_before_upload_rejected(self):
+        result = self.run_dispatcher("deploy {}".format(VALID_SHA))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"does not exist", result.stderr)
+
 
 class RootWrapperTest(unittest.TestCase):
-    def test_script_exists_and_executable(self):
-        self.assertTrue(ROOT_WRAPPER.exists())
-        self.assertTrue(os.access(ROOT_WRAPPER, os.X_OK))
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.base = Path(self.temp_dir.name)
+        self.staging = self.base / "staging"
+        self.staging.mkdir()
+        self.fake_helper = self.base / "calibre-web-helper"
+        self.fake_helper.write_text("#!/usr/bin/env bash\nprintf 'HELPER_INVOKED\\n'\n")
+        self.fake_helper.chmod(0o755)
+        self.env = os.environ.copy()
+        self.env["STAGING_BASE"] = str(self.staging)
 
-    def test_requires_bundle_dir_and_sha(self):
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def run_wrapper(self, stdin_text):
+        env = self.env.copy()
+        env["HELPER"] = str(self.fake_helper)
         result = subprocess.run(
             ["bash", str(ROOT_WRAPPER)],
+            input=stdin_text,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        return result
+
+    def test_no_arguments_accepted(self):
+        result = subprocess.run(
+            ["bash", str(ROOT_WRAPPER), "extra"],
             capture_output=True, text=True, timeout=15,
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("--bundle-dir", result.stderr)
+        self.assertIn("accepts no command-line arguments", result.stderr)
 
-    def test_invalid_sha_rejected(self):
+    def test_two_arguments_rejected(self):
         result = subprocess.run(
-            ["bash", str(ROOT_WRAPPER), "--bundle-dir", "/tmp/x", "--commit-sha", "bad"],
+            ["bash", str(ROOT_WRAPPER), "a", "b"],
             capture_output=True, text=True, timeout=15,
         )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("accepts no command-line arguments", result.stderr)
+
+    def test_empty_stdin_rejected(self):
+        result = self.run_wrapper("")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("empty stdin", result.stderr)
+
+    def test_invalid_sha_rejected(self):
+        result = self.run_wrapper("not-a-sha\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("40 hexadecimal", result.stderr)
+
+    def test_uppercase_sha_rejected(self):
+        result = self.run_wrapper("A" * 40 + "\n")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("40 lowercase hexadecimal", result.stderr)
 
-    def test_path_mismatch_rejected(self):
-        result = subprocess.run(
-            ["bash", str(ROOT_WRAPPER),
-             "--bundle-dir", "/tmp/wrong-path",
-             "--commit-sha", VALID_SHA],
-            capture_output=True, text=True, timeout=15,
-        )
+    def test_two_lines_rejected(self):
+        result = self.run_wrapper("{}\nextra\n".format(VALID_SHA))
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("path mismatch", result.stderr)
+        self.assertIn("trailing input", result.stderr)
 
-    def test_unknown_argument_rejected(self):
+    def test_no_newline_rejected(self):
         result = subprocess.run(
-            ["bash", str(ROOT_WRAPPER),
-             "--bundle-dir", "/tmp/x",
-             "--commit-sha", VALID_SHA,
-             "--evil", "value"],
-            capture_output=True, text=True, timeout=15,
+            ["bash", str(ROOT_WRAPPER)],
+            input=VALID_SHA,
+            env=self.env,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("unknown argument", result.stderr)
+
+    def test_valid_sha_derives_exact_path(self):
+        bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        bundle.mkdir(parents=True)
+        result = self.run_wrapper("{}\n".format(VALID_SHA))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("HELPER_INVOKED", result.stdout)
+
+    def test_missing_bundle_rejected(self):
+        result = self.run_wrapper("{}\n".format(VALID_SHA))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not exist", result.stderr)
+
+
+class DispatcherScriptTest(unittest.TestCase):
+    def test_no_scp_in_workflow(self):
+        workflow = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "deploy-production.yml"
+        content = workflow.read_text()
+        self.assertNotIn("scp ", content)
+
+    def test_no_direct_remote_sudo(self):
+        workflow = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "deploy-production.yml"
+        content = workflow.read_text()
+        self.assertNotRegex(content, r"ssh.*sudo\s+/usr/local/sbin/aubooks-deploy-calibre-web")
+
+    def test_only_upload_deploy_protocol(self):
+        workflow = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "deploy-production.yml"
+        content = workflow.read_text()
+        self.assertIn("upload $COMMIT_SHA", content)
+        self.assertIn("deploy $COMMIT_SHA", content)
+
+    def test_dispatcher_script_exists(self):
+        self.assertTrue(DISPATCHER.exists())
+        self.assertTrue(os.access(DISPATCHER, os.X_OK))
+
+    def test_root_wrapper_script_exists(self):
+        self.assertTrue(ROOT_WRAPPER.exists())
+        self.assertTrue(os.access(ROOT_WRAPPER, os.X_OK))
+
+    def test_dispatcher_reads_ssh_original_command(self):
+        content = DISPATCHER.read_text()
+        self.assertIn("SSH_ORIGINAL_COMMAND", content)
+
+    def test_root_wrapper_reads_stdin(self):
+        content = ROOT_WRAPPER.read_text()
+        self.assertIn("read -r", content)
+
+    def test_root_wrapper_no_eval(self):
+        content = ROOT_WRAPPER.read_text()
+        self.assertNotIn("eval ", content)
+        self.assertNotIn("bash -c", content)
+        self.assertNotIn("sh -c", content)
+
+    def test_dispatcher_no_eval(self):
+        content = DISPATCHER.read_text()
+        self.assertNotIn("eval ", content)
+        self.assertNotIn("bash -c", content)
+        self.assertNotIn("sh -c", content)
 
 
 if __name__ == "__main__":

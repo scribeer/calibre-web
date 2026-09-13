@@ -5,14 +5,9 @@ set -Eeuo pipefail
 readonly DEPLOY_USER="${AUBOOKS_DEPLOY_USER:-aubooks-deploy}"
 readonly ROOT_WRAPPER="/usr/local/sbin/aubooks-deploy-root"
 readonly STAGING_BASE="${STAGING_BASE:-/var/tmp}"
-
-usage() {
-  printf 'Usage: %s\n' "$0" >&2
-  printf 'Forced-command dispatcher for AU-Books production deploy.\n' >&2
-  printf 'SSH_ORIGINAL_COMMAND must be exactly:\n' >&2
-  printf '  upload <40hex-sha>\n' >&2
-  printf '  deploy <40hex-sha>\n' >&2
-}
+readonly MAX_ARCHIVE_BYTES=$((512 * 1024 * 1024))
+readonly MAX_WHEEL_BYTES=$((256 * 1024 * 1024))
+readonly MAX_METADATA_BYTES=$((256 * 1024))
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -42,35 +37,97 @@ case "$verb" in
     [[ ! -e "$bundle_dir" ]] || fail 'bundle directory already exists; refusing partial overwrite'
     install -d -m 0700 "$staging"
     install -d -m 0700 "$bundle_dir"
-    tar -x -C "$bundle_dir" \
-      --no-same-owner --no-same-permissions \
-      --no-recursion \
-      --wildcards 'calibreweb-*.whl' 'SHA256SUMS' 'artifact-manifest.json' 'deploy-request.json'
-    python3 - "$bundle_dir" <<'PY'
+    tmp_archive="$(mktemp "$staging/archive.XXXXXX")"
+    cleanup() { rm -rf "$staging"; }
+    trap cleanup ERR
+    cat > "$tmp_archive"
+    archive_size="$(stat -c '%s' "$tmp_archive")"
+    (( archive_size <= MAX_ARCHIVE_BYTES )) || fail "archive exceeds maximum size: ${archive_size} bytes"
+    (( archive_size > 0 )) || fail 'archive is empty'
+    python3 - "$tmp_archive" "$bundle_dir" "$DEPLOY_USER" "$MAX_WHEEL_BYTES" "$MAX_METADATA_BYTES" <<'PY'
 import os
 import sys
+import tarfile
 from pathlib import Path
 
-bundle = Path(sys.argv[1])
-for entry in bundle.iterdir():
+archive_path = Path(sys.argv[1])
+bundle_dir = Path(sys.argv[2])
+deploy_user = sys.argv[3]
+max_wheel = int(sys.argv[4])
+max_metadata = int(sys.argv[5])
+
+ALLOWED_NAMES = {"SHA256SUMS", "artifact-manifest.json", "deploy-request.json"}
+ALLOWED_EXTS = {".whl"}
+
+def validate_member(member):
+    if member.name != member.name.split("/")[-1]:
+        raise SystemExit("nested path rejected: {}".format(member.name))
+    if member.name.startswith("/"):
+        raise SystemExit("absolute path rejected: {}".format(member.name))
+    if ".." in member.name.split("/"):
+        raise SystemExit("path traversal rejected: {}".format(member.name))
+    if member.issym() or member.islnk():
+        raise SystemExit("symlink/hardlink rejected: {}".format(member.name))
+    if member.isdev():
+        raise SystemExit("device file rejected: {}".format(member.name))
+    if member.isdir():
+        raise SystemExit("directory rejected: {}".format(member.name))
+    if not member.isfile():
+        raise SystemExit("non-regular file rejected: {}".format(member.name))
+
+with tarfile.open(archive_path, "r:*") as tar:
+    members = tar.getmembers()
+    if len(members) != 4:
+        raise SystemExit("expected exactly 4 archive members, found {}".format(len(members)))
+
+    seen = set()
+    for member in members:
+        validate_member(member)
+        if member.name in seen:
+            raise SystemExit("duplicate filename rejected: {}".format(member.name))
+        seen.add(member.name)
+
+        is_wheel = member.name.startswith("calibreweb-") and member.name.endswith(".whl")
+        is_metadata = member.name in ALLOWED_NAMES
+
+        if not (is_wheel or is_metadata):
+            raise SystemExit("unexpected file rejected: {}".format(member.name))
+
+        if is_wheel and len(seen - ALLOWED_NAMES) > 1:
+            raise SystemExit("expected exactly one wheel, found extra: {}".format(member.name))
+
+        limit = max_wheel if is_wheel else max_metadata
+        if member.size > limit:
+            raise SystemExit("file exceeds size limit: {} ({} bytes)".format(member.name, member.size))
+
+    if len(seen - ALLOWED_NAMES) != 1:
+        raise SystemExit("expected exactly one wheel file")
+
+    for member in members:
+        data = tar.extractfile(member)
+        if data is None:
+            raise SystemExit("cannot read member: {}".format(member.name))
+        content = data.read()
+        if len(content) != member.size:
+            raise SystemExit("size mismatch for {}: expected {} got {}".format(
+                member.name, member.size, len(content)))
+        target = bundle_dir / member.name
+        target.write_bytes(content)
+        os.chmod(target, 0o644)
+
+for entry in bundle_dir.iterdir():
     if entry.is_symlink():
         raise SystemExit("symlink in bundle: {}".format(entry.name))
     if not entry.is_file():
         raise SystemExit("unexpected entry in bundle: {}".format(entry.name))
-    if entry.name.startswith("/"):
-        raise SystemExit("absolute path in bundle: {}".format(entry.name))
-    resolved = entry.resolve()
-    if not str(resolved).startswith(str(bundle.resolve())):
-        raise SystemExit("path traversal in bundle: {}".format(entry.name))
+
+if os.getuid() == 0:
+    for entry in bundle_dir.iterdir():
+        os.chown(entry, deploy_user, deploy_user)
 PY
-    if [[ "$(id -u)" == "0" ]]; then
-      chown -R "$DEPLOY_USER:$DEPLOY_USER" "$staging"
-    fi
+    rm -f "$tmp_archive"
+    trap - ERR
     chmod 0700 "$staging" "$bundle_dir"
-    for f in "$bundle_dir"/*; do
-      [[ -f "$f" && ! -L "$f" ]] || fail "unexpected file in bundle: $(basename "$f")"
-      chmod 0644 "$f"
-    done
     printf 'upload %s OK\n' "$sha"
     ;;
   deploy)
@@ -78,7 +135,7 @@ PY
     [[ "$(id -u)" == "0" ]] || fail 'dispatcher must run as root for deploy'
     owner="$(stat -c '%U' "$bundle_dir")"
     [[ "$owner" == "$DEPLOY_USER" ]] || fail 'bundle directory has unexpected owner'
-    exec "$ROOT_WRAPPER" --bundle-dir "$bundle_dir" --commit-sha "$sha"
+    printf '%s\n' "$sha" | sudo -n "$ROOT_WRAPPER"
     ;;
   *)
     fail "unknown verb: $verb"

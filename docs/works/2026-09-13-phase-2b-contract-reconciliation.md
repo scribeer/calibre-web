@@ -28,9 +28,10 @@ Workflow использовал:
 
 **authorized_keys:**
 ```
-restrict,command="export \"SSH_ORIGINAL_COMMAND=$SSH_ORIGINAL_COMMAND\" && /usr/local/sbin/aubooks-deploy-dispatcher"
-ssh-ed25519 AAAA... deploy@calibre-web
+restrict,command="/usr/local/sbin/aubooks-deploy-dispatcher" ssh-ed25519 AAAA... deploy@calibre-web
 ```
+
+sshd автоматически предоставляет `SSH_ORIGINAL_COMMAND` при forced command. Никакого `export` не требуется.
 
 **Два компонента:**
 - `deploy/vps2/aubooks-deploy-dispatcher.sh` — forced-command dispatcher
@@ -72,24 +73,28 @@ Dispatcher:
 - Валидирует SHA
 - Сам вычисляет bundle dir: `/var/tmp/aubooks-calibre-web-$SHA/deploy-bundle`
 - Проверяет staging ownership
-- Вызывает `exec /usr/local/sbin/aubooks-deploy-root --bundle-dir <derived> --commit-sha <SHA>`
+- Передаёт SHA через stdin: `printf '%s\n' "$sha" | sudo -n /usr/local/sbin/aubooks-deploy-root`
+- Никаких command-line arguments
 
 ### 5. Root Wrapper
 
 `deploy/vps2/aubooks-deploy-root.sh`:
-- Принимает только `--bundle-dir` и `--commit-sha`
-- Валидирует SHA format
-- Проверяет path exact match: `$STAGING_BASE/aubooks-calibre-web-$SHA/deploy-bundle`
+- НЕ принимает никаких command-line arguments (`[[ "$#" -eq 0 ]]`)
+- Читает ровно одну строку SHA из stdin (`read -r sha`)
+- Reject trailing additional input
+- Валидирует SHA строго: `^[0-9a-f]{40}$`
+- Сам вычисляет bundle dir: `$STAGING_BASE/aubooks-calibre-web-$SHA/deploy-bundle`
 - НЕ принимает произвольные paths
 - `exec` в `deploy-calibre-web-release.sh`
 
 ### 6. Sudoers
 
 ```
-aubooks-deploy ALL=(root) NOPASSWD: /usr/local/sbin/aubooks-deploy-root --bundle-dir /var/tmp/aubooks-calibre-web-*/* --commit-sha [0-9a]{40}
+aubooks-deploy ALL=(root) NOPASSWD: /usr/local/sbin/aubooks-deploy-root
 ```
 
-Deploy user НЕ имеет способ использовать sudo для произвольного path/command.
+БЕЗ аргументов. БЕЗ wildcard. БЕЗ dynamic matching.
+Root wrapper принимает SHA через stdin и сам вычисляет paths.
 
 ### 7. Bundle Transport
 
@@ -98,10 +103,18 @@ Deploy user НЕ имеет способ использовать sudo для п
 - Нет SCP, нет `ssh install`, нет прямого sudo
 
 **Dispatcher side:**
-- tar extract с wildcards filter
-- Python validation: symlinks, absolute paths, traversal, file count
+- Сохраняет stdin как временный archive file
+- Полностью проверяет archive BEFORE extraction:
+  - Ровно 4 members
+  - Каждый: top-level basename only, regular file only
+  - НЕ symlink, НЕ hardlink, НЕ directory, НЕ device/fifo
+  - НЕ absolute path, НЕ "..", НЕ slash/path components
+  - НЕ duplicate names
+  - Size limits: archive ≤512MB, wheel ≤256MB, metadata ≤256KB
+- После PASS: извлекает каждый approved member непосредственно
 - chown от root
 - file permission hardening
+- При ошибке: staging cleanup, nonzero exit
 
 **Helper side (без изменений):**
 - Triple checksum verification
@@ -140,13 +153,14 @@ Deploy user НЕ имеет способ использовать sudo для п
 - `deploy/vps2/aubooks-deploy-dispatcher.sh` — НОВЫЙ forced-command dispatcher
 - `deploy/vps2/aubooks-deploy-root.sh` — НОВЫЙ root wrapper
 - `.github/workflows/deploy-production.yml` — upload/deploy protocol
-- `tests/test_calibre_web_deploy_helper.py` — 29 hermetic tests (12 helper + 12 dispatcher + 5 root wrapper)
+- `tests/test_calibre_web_deploy_helper.py` — 51 hermetic tests (12 helper + 21 dispatcher + 9 root wrapper + 9 script checks)
 - `docs/works/2026-09-13-phase-2b-contract-reconciliation.md` — этот doc
 
 ## Проверки
 - Deploy helper tests: 12/12 pass
-- Dispatcher tests: 12/12 pass
-- Root wrapper tests: 5/5 pass
+- Dispatcher upload tests: 21/21 pass
+- Root wrapper tests: 9/9 pass
+- Script structure tests: 9/9 pass
 - Bash syntax: `bash -n` на всех scripts OK
 - YAML parse: OK
 - Security grep: no `scp`, no `ssh.*install`, no `ssh.*sudo` в workflow
