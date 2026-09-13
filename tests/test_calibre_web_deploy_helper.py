@@ -120,10 +120,54 @@ class DeployHelperTest(unittest.TestCase):
             "if [[ ${1:-} == cat ]]; then exit 0; fi\n"
             "if [[ ${1:-} == show ]]; then printf 'calibre-web\\n'; exit 0; fi\n"
             "printf '%s\\n' \"$*\" >> \"$COMMAND_LOG\"\n"
+            "if [[ ${1:-} == restart && -n ${FAIL_FIRST_RESTART_FILE:-} "
+            "&& ! -e $FAIL_FIRST_RESTART_FILE ]]; then "
+            ": > \"$FAIL_FIRST_RESTART_FILE\"; exit 1; fi\n"
             "exit 0\n",
             encoding="utf-8",
         )
-        for path in (fake_id, fake_systemctl):
+        fake_install = self.fake_bin / "install"
+        fake_install.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -e\n"
+            "if [[ \" $* \" == *\" -d \"* ]]; then mkdir -p \"${@: -1}\"; exit 0; fi\n"
+            "cp \"${@: -2:1}\" \"${@: -1}\"\n",
+            encoding="utf-8",
+        )
+        fake_runuser = self.fake_bin / "runuser"
+        fake_runuser.write_text(
+            "#!/usr/bin/env bash\n"
+            "shift 2\n"
+            "[[ ${1:-} == -- ]] && shift\n"
+            "if [[ ${1:-} == python3 && ${2:-} == - && ${3:-} == */config/app.db ]]; then "
+            "exec \"$@\"; fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        fake_ss = self.fake_bin / "ss"
+        fake_ss.write_text(
+            "#!/usr/bin/env bash\nprintf 'LISTEN 0 128 127.0.0.1:8083 0.0.0.0:*\\n'\n",
+            encoding="utf-8",
+        )
+        fake_curl = self.fake_bin / "curl"
+        fake_curl.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        fake_journalctl = self.fake_bin / "journalctl"
+        fake_journalctl.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        fake_chown = self.fake_bin / "chown"
+        fake_chown.write_text(
+            "#!/usr/bin/env bash\nprintf 'chown %s\\n' \"$*\" >> \"$COMMAND_LOG\"\n",
+            encoding="utf-8",
+        )
+        fake_chmod = self.fake_bin / "chmod"
+        fake_chmod.write_text(
+            "#!/usr/bin/env bash\nprintf 'chmod %s\\n' \"$*\" >> \"$COMMAND_LOG\"\n"
+            "exec /usr/bin/chmod \"$@\"\n",
+            encoding="utf-8",
+        )
+        for path in (
+            fake_id, fake_systemctl, fake_install, fake_runuser, fake_ss,
+            fake_curl, fake_journalctl, fake_chown, fake_chmod,
+        ):
             path.chmod(0o755)
 
     def run_helper(self, *arguments):
@@ -138,6 +182,20 @@ class DeployHelperTest(unittest.TestCase):
     def run_dry(self):
         return self.run_helper(
             "--bundle-dir", str(self.bundle), "--commit-sha", VALID_SHA, "--dry-run"
+        )
+
+    def run_live(self, **extra_env):
+        env = self.env.copy()
+        env.update(extra_env)
+        return subprocess.run(
+            [
+                "bash", str(HELPER), "--bundle-dir", str(self.bundle),
+                "--commit-sha", VALID_SHA,
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
 
     def tree_snapshot(self):
@@ -202,6 +260,57 @@ class DeployHelperTest(unittest.TestCase):
             connection.close()
         self.assertEqual(theme, 3)
         self.assertIn("CONFIG_THEME_ALREADY_3", result.stdout)
+
+    def test_theme_change_preserves_app_db_owner_group_and_mode(self):
+        with sqlite3.connect(self.app_db) as connection:
+            connection.execute("UPDATE settings SET config_theme = 1")
+        self.app_db.chmod(0o640)
+        before = self.app_db.stat()
+
+        result = self.run_live()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with sqlite3.connect(self.app_db) as connection:
+            theme = connection.execute("SELECT config_theme FROM settings").fetchone()[0]
+        after = self.app_db.stat()
+        self.assertEqual(theme, 3)
+        self.assertEqual(after.st_uid, before.st_uid)
+        self.assertEqual(after.st_gid, before.st_gid)
+        self.assertEqual(after.st_mode & 0o777, before.st_mode & 0o777)
+        self.assertTrue(os.access(self.app_db, os.W_OK))
+        command_log = self.command_log.read_text(encoding="utf-8")
+        self.assertIn("chown {}:{} {}".format(before.st_uid, before.st_gid, self.app_db), command_log)
+        self.assertIn("chmod 640 {}".format(self.app_db), command_log)
+
+    def test_rollback_restores_theme_owner_group_mode_and_writability(self):
+        with sqlite3.connect(self.app_db) as connection:
+            connection.execute("UPDATE settings SET config_theme = 1")
+        self.app_db.chmod(0o640)
+        before = self.app_db.stat()
+        fail_marker = self.base / "failed-first-restart"
+
+        result = self.run_live(FAIL_FIRST_RESTART_FILE=str(fail_marker))
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Rollback completed", result.stderr)
+        self.assertNotIn("Rollback encountered errors", result.stderr)
+        with sqlite3.connect(self.app_db) as connection:
+            theme = connection.execute("SELECT config_theme FROM settings").fetchone()[0]
+            integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+        after = self.app_db.stat()
+        self.assertEqual(theme, 1)
+        self.assertEqual(integrity, "ok")
+        self.assertEqual(after.st_uid, before.st_uid)
+        self.assertEqual(after.st_gid, before.st_gid)
+        self.assertEqual(after.st_mode & 0o777, before.st_mode & 0o777)
+        self.assertTrue(os.access(self.app_db, os.W_OK))
+        self.assertEqual((self.root / "current").resolve(), self.previous.resolve())
+        command_log = self.command_log.read_text(encoding="utf-8")
+        self.assertGreaterEqual(
+            command_log.count("chown {}:{} {}".format(before.st_uid, before.st_gid, self.app_db)),
+            2,
+        )
+        self.assertGreaterEqual(command_log.count("chmod 640 {}".format(self.app_db)), 2)
 
     def test_rollback_plan_records_previous_release(self):
         result = self.run_dry()

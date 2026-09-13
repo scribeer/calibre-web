@@ -16,6 +16,9 @@ DB_CHANGED=0
 SERVICE_STOPPED=0
 PREVIOUS_RELEASE=""
 APP_DB_BACKUP=""
+APP_DB_UID=""
+APP_DB_GID=""
+APP_DB_MODE=""
 WHEEL_FILENAME=""
 WHEEL_SHA256=""
 PUBLIC_URL=""
@@ -67,7 +70,7 @@ done
 [[ ! -L "$BUNDLE_DIR" ]] || fail 'bundle directory must not be a symlink'
 [[ "$MIN_FREE_KB" =~ ^[0-9]+$ ]] || fail 'AUBOOKS_MIN_FREE_KB must be a non-negative integer'
 
-for command_name in curl df flock grep id install journalctl python3 readlink runuser sha256sum ss systemctl; do
+for command_name in chmod chown curl df flock grep id install journalctl python3 readlink runuser sha256sum ss stat systemctl; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is unavailable: $command_name"
 done
 [[ "$(id -u)" == "0" ]] || fail 'helper must run as root or through sudo'
@@ -268,11 +271,20 @@ validate_platform() {
   [[ "$available_kb" =~ ^[0-9]+$ ]] || fail 'could not determine free disk space'
   (( available_kb >= MIN_FREE_KB )) || fail "insufficient free space: ${available_kb}KB available, ${MIN_FREE_KB}KB required"
   validate_app_database
+  APP_DB_UID="$(stat -c '%u' "$APP_DB")"
+  APP_DB_GID="$(stat -c '%g' "$APP_DB")"
+  APP_DB_MODE="$(stat -c '%a' "$APP_DB")"
 }
 
 acquire_lock() {
   exec 9<"$DEPLOY_ROOT"
   flock -n 9 || fail 'another Calibre-Web deployment is already running'
+}
+
+restore_app_db_metadata() {
+  [[ -n "$APP_DB_UID" && -n "$APP_DB_GID" && -n "$APP_DB_MODE" ]] || return 0
+  chown "$APP_DB_UID:$APP_DB_GID" "$APP_DB"
+  chmod "$APP_DB_MODE" "$APP_DB"
 }
 
 backup_databases() {
@@ -339,7 +351,8 @@ assert theme["id"] == 3 and theme["identifier"] == "aubooks"
 PY
   systemctl stop "$SERVICE_NAME"
   SERVICE_STOPPED=1
-  python3 - "$APP_DB" <<'PY'
+  DB_CHANGED=1
+  runuser -u "$SERVICE_USER" -- python3 - "$APP_DB" <<'PY'
 import sqlite3
 import sys
 
@@ -356,7 +369,7 @@ except Exception:
 finally:
     connection.close()
 PY
-  DB_CHANGED=1
+  restore_app_db_metadata
   printf 'config_theme changed transactionally to 3\n'
 }
 
@@ -429,7 +442,11 @@ rollback() {
     rm -f "$restore_tmp"
     if cp --preserve=mode,timestamps "$APP_DB_BACKUP" "$restore_tmp"; then
       rm -f "$APP_DB-wal" "$APP_DB-shm" "$APP_DB-journal"
-      mv -f "$restore_tmp" "$APP_DB" || rollback_ok=0
+      if mv -f "$restore_tmp" "$APP_DB"; then
+        restore_app_db_metadata || rollback_ok=0
+      else
+        rollback_ok=0
+      fi
     else
       rollback_ok=0
     fi
