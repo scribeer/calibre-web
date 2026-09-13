@@ -1,0 +1,330 @@
+name: Deploy AU-Books production
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full 40-character commit SHA from branch aubooks
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: calibre-web-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Validate artifact and invoke production helper
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate requested commit and find exact CI run
+        id: request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        run: |
+          if [[ ! "$REQUESTED_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            printf 'commit_sha must be exactly 40 hexadecimal characters\n' >&2
+            exit 1
+          fi
+          REQUESTED_SHA="${REQUESTED_SHA,,}"
+
+          gh api "repos/$GITHUB_REPOSITORY/commits/$REQUESTED_SHA" > "$RUNNER_TEMP/commit.json"
+          python - "$RUNNER_TEMP/commit.json" "$REQUESTED_SHA" <<'PY'
+          import json
+          import sys
+
+          commit = json.load(open(sys.argv[1], encoding="utf-8"))
+          if commit.get("sha", "").lower() != sys.argv[2]:
+              raise SystemExit("GitHub API returned a different commit")
+          PY
+
+          gh api "repos/$GITHUB_REPOSITORY/compare/$REQUESTED_SHA...aubooks" > "$RUNNER_TEMP/compare.json"
+          python - "$RUNNER_TEMP/compare.json" "$REQUESTED_SHA" <<'PY'
+          import json
+          import sys
+
+          comparison = json.load(open(sys.argv[1], encoding="utf-8"))
+          merge_base = comparison.get("merge_base_commit", {}).get("sha", "").lower()
+          if merge_base != sys.argv[2] or comparison.get("status") not in {"ahead", "identical"}:
+              raise SystemExit("Requested commit is not in the history of branch aubooks")
+          PY
+
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci-aubooks.yml/runs?branch=aubooks&event=push&status=success&head_sha=$REQUESTED_SHA&per_page=100" > "$RUNNER_TEMP/runs.json"
+          readarray -t run_data < <(python - "$RUNNER_TEMP/runs.json" "$REQUESTED_SHA" <<'PY'
+          import json
+          import sys
+
+          runs = json.load(open(sys.argv[1], encoding="utf-8")).get("workflow_runs", [])
+          matches = [
+              run for run in runs
+              if run.get("head_sha", "").lower() == sys.argv[2]
+              and run.get("event") == "push"
+              and run.get("head_branch") == "aubooks"
+              and run.get("conclusion") == "success"
+              and run.get("path") == ".github/workflows/ci-aubooks.yml"
+          ]
+          if len(matches) != 1:
+              raise SystemExit("Expected exactly one successful exact-SHA CI push run, found {}".format(len(matches)))
+          print(matches[0]["id"])
+          print(matches[0]["run_attempt"])
+          PY
+          )
+          if [[ "${#run_data[@]}" -ne 2 ]]; then
+            printf 'Could not resolve exact CI run metadata\n' >&2
+            exit 1
+          fi
+          printf 'commit_sha=%s\n' "$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
+          printf 'ci_run_id=%s\n' "${run_data[0]}" >> "$GITHUB_OUTPUT"
+          printf 'ci_run_attempt=%s\n' "${run_data[1]}" >> "$GITHUB_OUTPUT"
+      - name: Validate exact artifact metadata
+        id: artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ steps.request.outputs.commit_sha }}
+          CI_RUN_ID: ${{ steps.request.outputs.ci_run_id }}
+        run: |
+          artifact_name="calibreweb-aubooks-$COMMIT_SHA"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID/artifacts?per_page=100" > "$RUNNER_TEMP/artifacts.json"
+          artifact_id="$(python - "$RUNNER_TEMP/artifacts.json" "$artifact_name" "$CI_RUN_ID" "$COMMIT_SHA" <<'PY'
+          import json
+          import sys
+
+          artifacts = json.load(open(sys.argv[1], encoding="utf-8")).get("artifacts", [])
+          matches = [artifact for artifact in artifacts if artifact.get("name") == sys.argv[2]]
+          if len(matches) != 1:
+              raise SystemExit("Expected exactly one exact-SHA artifact, found {}".format(len(matches)))
+          artifact = matches[0]
+          workflow_run = artifact.get("workflow_run", {})
+          if artifact.get("expired"):
+              raise SystemExit("Exact-SHA artifact is expired")
+          if int(artifact.get("size_in_bytes", 0)) <= 0:
+              raise SystemExit("Exact-SHA artifact is empty")
+          if str(workflow_run.get("id")) != sys.argv[3] or workflow_run.get("head_sha", "").lower() != sys.argv[4]:
+              raise SystemExit("Artifact is not associated with the selected CI run and SHA")
+          print(artifact["id"])
+          PY
+          )"
+          printf 'artifact_name=%s\n' "$artifact_name" >> "$GITHUB_OUTPUT"
+          printf 'artifact_id=%s\n' "$artifact_id" >> "$GITHUB_OUTPUT"
+      - name: Download exact CI artifact by immutable ID
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+          ARTIFACT_DIR: ${{ runner.temp }}/ci-artifact
+        run: |
+          mkdir -p "$ARTIFACT_DIR"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > "$RUNNER_TEMP/ci-artifact.zip"
+          python - "$RUNNER_TEMP/ci-artifact.zip" "$ARTIFACT_DIR" <<'PY'
+          from pathlib import Path
+          import sys
+          from zipfile import ZipFile
+
+          destination = Path(sys.argv[2]).resolve()
+          with ZipFile(sys.argv[1]) as archive:
+              bad_file = archive.testzip()
+              if bad_file is not None:
+                  raise SystemExit("Corrupt file in artifact ZIP: {}".format(bad_file))
+              for member in archive.infolist():
+                  target = (destination / member.filename).resolve()
+                  if target != destination and destination not in target.parents:
+                      raise SystemExit("Unsafe path in artifact ZIP: {}".format(member.filename))
+              archive.extractall(destination)
+          PY
+      - name: Verify artifact contract
+        id: verify
+        env:
+          COMMIT_SHA: ${{ steps.request.outputs.commit_sha }}
+          CI_RUN_ID: ${{ steps.request.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ steps.request.outputs.ci_run_attempt }}
+          ARTIFACT_DIR: ${{ runner.temp }}/ci-artifact
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          from zipfile import ZipFile
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          expected_files = {"SHA256SUMS", "artifact-manifest.json"}
+          missing = sorted(name for name in expected_files if not (artifact_dir / name).is_file())
+          if missing:
+              raise SystemExit("Artifact files missing: {}".format(", ".join(missing)))
+          wheels = list(artifact_dir.glob("calibreweb-*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit("Expected exactly one calibreweb wheel, found {}".format(len(wheels)))
+
+          manifest = json.loads((artifact_dir / "artifact-manifest.json").read_text(encoding="utf-8"))
+          required_manifest = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit_sha": os.environ["COMMIT_SHA"],
+              "ref": "refs/heads/aubooks",
+              "run_id": os.environ["CI_RUN_ID"],
+              "run_attempt": os.environ["CI_RUN_ATTEMPT"],
+          }
+          for key, expected in required_manifest.items():
+              if str(manifest.get(key)) != expected:
+                  raise SystemExit("Manifest {} mismatch".format(key))
+          if not str(manifest.get("package_version", "")).strip():
+              raise SystemExit("Manifest package_version is empty")
+          wheel = artifact_dir / str(manifest.get("wheel_filename", ""))
+          if wheel != wheels[0] or not wheel.is_file():
+              raise SystemExit("Manifest wheel_filename does not identify the artifact wheel")
+          digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+          if digest != manifest.get("wheel_sha256"):
+              raise SystemExit("Manifest wheel_sha256 mismatch")
+
+          with ZipFile(wheel) as archive:
+              bad_file = archive.testzip()
+              if bad_file is not None:
+                  raise SystemExit("Corrupt file in wheel: {}".format(bad_file))
+              names = set(archive.namelist())
+              required = {
+                  "calibreweb/__main__.py",
+                  "calibreweb/cps/themes.py",
+                  "calibreweb/cps/static/css/aubooks.css",
+                  "calibreweb/cps/themes/aubooks/templates/layout.html",
+                  "calibreweb/cps/themes/aubooks/templates/login.html",
+                  "calibreweb/cps/ub.py",
+              }
+              missing_wheel = sorted(required - names)
+              if missing_wheel:
+                  raise SystemExit("Wheel runtime files missing: {}".format(", ".join(missing_wheel)))
+              if not any(name.startswith("calibreweb/cps/") for name in names):
+                  raise SystemExit("calibreweb/cps package is missing")
+              if any("library" in PurePosixPath(name).parts for name in names):
+                  raise SystemExit("library/ must not be packaged")
+              invite_source = archive.read("calibreweb/cps/ub.py").decode("utf-8")
+              if "class Invite" not in invite_source or "def create_invite" not in invite_source:
+                  raise SystemExit("Invite implementation is missing")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("wheel_filename={}\n".format(wheel.name))
+              output.write("wheel_sha256={}\n".format(digest))
+          PY
+          wheel_path="$(python - "$ARTIFACT_DIR" <<'PY'
+          from pathlib import Path
+          import sys
+
+          wheels = list(Path(sys.argv[1]).glob("calibreweb-*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit("Expected exactly one wheel for zipfile verification")
+          print(wheels[0])
+          PY
+          )"
+          python -m zipfile -t "$wheel_path"
+          (
+            cd "$ARTIFACT_DIR"
+            sha256sum -c SHA256SUMS
+          )
+      - name: Prepare deploy bundle
+        env:
+          COMMIT_SHA: ${{ steps.request.outputs.commit_sha }}
+          CI_RUN_ID: ${{ steps.request.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ steps.request.outputs.ci_run_attempt }}
+          WHEEL_FILENAME: ${{ steps.verify.outputs.wheel_filename }}
+          WHEEL_SHA256: ${{ steps.verify.outputs.wheel_sha256 }}
+          ARTIFACT_DIR: ${{ runner.temp }}/ci-artifact
+          BUNDLE_DIR: ${{ runner.temp }}/deploy-bundle
+          PUBLIC_URL: ${{ vars.AUBOOKS_PUBLIC_URL }}
+        run: |
+          mkdir -p "$BUNDLE_DIR"
+          cp "$ARTIFACT_DIR/$WHEEL_FILENAME" "$ARTIFACT_DIR/SHA256SUMS" "$ARTIFACT_DIR/artifact-manifest.json" "$BUNDLE_DIR/"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          request = {
+              "commit_sha": os.environ["COMMIT_SHA"],
+              "wheel_filename": os.environ["WHEEL_FILENAME"],
+              "wheel_sha256": os.environ["WHEEL_SHA256"],
+              "github_run_id": os.environ["CI_RUN_ID"],
+              "github_run_attempt": os.environ["CI_RUN_ATTEMPT"],
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "requested_by": os.environ["GITHUB_ACTOR"],
+              "requested_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+              "public_url": os.environ["PUBLIC_URL"],
+          }
+          path = Path(os.environ["BUNDLE_DIR"]) / "deploy-request.json"
+          path.write_text(json.dumps(request, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+      - name: Validate production connection configuration
+        env:
+          SSH_KEY: ${{ secrets.VPS2_DEPLOY_SSH_KEY }}
+          VPS2_HOST: ${{ vars.VPS2_HOST }}
+          VPS2_SSH_PORT: ${{ vars.VPS2_SSH_PORT }}
+          VPS2_DEPLOY_USER: ${{ vars.VPS2_DEPLOY_USER }}
+          VPS2_KNOWN_HOSTS: ${{ vars.VPS2_KNOWN_HOSTS }}
+          AUBOOKS_PUBLIC_URL: ${{ vars.AUBOOKS_PUBLIC_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+
+          required = (
+              "SSH_KEY",
+              "VPS2_HOST",
+              "VPS2_SSH_PORT",
+              "VPS2_DEPLOY_USER",
+              "VPS2_KNOWN_HOSTS",
+              "AUBOOKS_PUBLIC_URL",
+          )
+          missing = [name for name in required if not os.environ.get(name, "").strip()]
+          if missing:
+              raise SystemExit("Required production configuration is missing: {}".format(", ".join(missing)))
+          if not re.fullmatch(r"[A-Za-z0-9.-]+", os.environ["VPS2_HOST"]):
+              raise SystemExit("VPS2_HOST has an invalid format")
+          if not re.fullmatch(r"[1-9][0-9]{0,4}", os.environ["VPS2_SSH_PORT"]):
+              raise SystemExit("VPS2_SSH_PORT has an invalid format")
+          if int(os.environ["VPS2_SSH_PORT"]) > 65535:
+              raise SystemExit("VPS2_SSH_PORT is outside the valid range")
+          if not re.fullmatch(r"[a-z_][a-z0-9_-]*", os.environ["VPS2_DEPLOY_USER"]):
+              raise SystemExit("VPS2_DEPLOY_USER has an invalid format")
+          if not re.fullmatch(r"https://[^\s/]+(?:/.*)?", os.environ["AUBOOKS_PUBLIC_URL"]):
+              raise SystemExit("AUBOOKS_PUBLIC_URL must be an HTTPS URL")
+          PY
+      - name: Invoke fixed remote deploy helper
+        env:
+          SSH_KEY: ${{ secrets.VPS2_DEPLOY_SSH_KEY }}
+          VPS2_HOST: ${{ vars.VPS2_HOST }}
+          VPS2_SSH_PORT: ${{ vars.VPS2_SSH_PORT }}
+          VPS2_DEPLOY_USER: ${{ vars.VPS2_DEPLOY_USER }}
+          VPS2_KNOWN_HOSTS: ${{ vars.VPS2_KNOWN_HOSTS }}
+          COMMIT_SHA: ${{ steps.request.outputs.commit_sha }}
+          BUNDLE_DIR: ${{ runner.temp }}/deploy-bundle
+        run: |
+          umask 077
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/ssh/deploy-key"
+          printf '%s\n' "$VPS2_KNOWN_HOSTS" > "$RUNNER_TEMP/ssh/known_hosts"
+          remote_stage="/var/tmp/aubooks-calibre-web-$COMMIT_SHA"
+          target="$VPS2_DEPLOY_USER@$VPS2_HOST"
+          ssh_options=(
+            -F /dev/null
+            -i "$RUNNER_TEMP/ssh/deploy-key"
+            -p "$VPS2_SSH_PORT"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts"
+          )
+          ssh "${ssh_options[@]}" -- "$target" install -d -m 0700 "$remote_stage/deploy-bundle"
+          scp -F /dev/null -i "$RUNNER_TEMP/ssh/deploy-key" -P "$VPS2_SSH_PORT" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" \
+            "$BUNDLE_DIR/"* "$target:$remote_stage/deploy-bundle/"
+          ssh "${ssh_options[@]}" -- "$target" \
+            sudo /usr/local/sbin/aubooks-deploy-calibre-web \
+              --bundle-dir "$remote_stage/deploy-bundle" \
+              --commit-sha "$COMMIT_SHA"
