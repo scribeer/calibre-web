@@ -294,7 +294,7 @@ jobs:
           if not re.fullmatch(r"https://[^\s/]+(?:/.*)?", os.environ["AUBOOKS_PUBLIC_URL"]):
               raise SystemExit("AUBOOKS_PUBLIC_URL must be an HTTPS URL")
           PY
-      - name: Invoke fixed remote deploy helper
+      - name: Upload deploy bundle via forced-command protocol
         env:
           SSH_KEY: ${{ secrets.VPS2_DEPLOY_SSH_KEY }}
           VPS2_HOST: ${{ vars.VPS2_HOST }}
@@ -302,13 +302,13 @@ jobs:
           VPS2_DEPLOY_USER: ${{ vars.VPS2_DEPLOY_USER }}
           VPS2_KNOWN_HOSTS: ${{ vars.VPS2_KNOWN_HOSTS }}
           COMMIT_SHA: ${{ steps.request.outputs.commit_sha }}
+          WHEEL_FILENAME: ${{ steps.verify.outputs.wheel_filename }}
           BUNDLE_DIR: ${{ runner.temp }}/deploy-bundle
         run: |
           umask 077
           install -d -m 0700 "$RUNNER_TEMP/ssh"
           printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/ssh/deploy-key"
           printf '%s\n' "$VPS2_KNOWN_HOSTS" > "$RUNNER_TEMP/ssh/known_hosts"
-          remote_stage="/var/tmp/aubooks-calibre-web-$COMMIT_SHA"
           target="$VPS2_DEPLOY_USER@$VPS2_HOST"
           ssh_options=(
             -F /dev/null
@@ -319,12 +319,27 @@ jobs:
             -o StrictHostKeyChecking=yes
             -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts"
           )
-          ssh "${ssh_options[@]}" -- "$target" install -d -m 0700 "$remote_stage/deploy-bundle"
-          scp -F /dev/null -i "$RUNNER_TEMP/ssh/deploy-key" -P "$VPS2_SSH_PORT" \
-            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+          for f in "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json; do
+            [[ -f "$BUNDLE_DIR/$f" ]] || { printf 'bundle file missing: %s\n' "$f" >&2; exit 1; }
+          done
+          tar -C "$BUNDLE_DIR" -cf - \
+            "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json \
+          | ssh "${ssh_options[@]}" -- "$target" "upload $COMMIT_SHA"
+      - name: Invoke deploy via forced-command protocol
+        env:
+          SSH_KEY: ${{ secrets.VPS2_DEPLOY_SSH_KEY }}
+          VPS2_HOST: ${{ vars.VPS2_HOST }}
+          VPS2_SSH_PORT: ${{ vars.VPS2_SSH_PORT }}
+          VPS2_DEPLOY_USER: ${{ vars.VPS2_DEPLOY_USER }}
+          VPS2_KNOWN_HOSTS: ${{ vars.VPS2_KNOWN_HOSTS }}
+          COMMIT_SHA: ${{ steps.request.outputs.commit_sha }}
+        run: |
+          target="$VPS2_DEPLOY_USER@$VPS2_HOST"
+          ssh -F /dev/null \
+            -i "$RUNNER_TEMP/ssh/deploy-key" \
+            -p "$VPS2_SSH_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
             -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" \
-            "$BUNDLE_DIR/"* "$target:$remote_stage/deploy-bundle/"
-          ssh "${ssh_options[@]}" -- "$target" \
-            sudo /usr/local/sbin/aubooks-deploy-calibre-web \
-              --bundle-dir "$remote_stage/deploy-bundle" \
-              --commit-sha "$COMMIT_SHA"
+            -- "$target" "deploy $COMMIT_SHA"
