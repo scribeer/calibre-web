@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import tarfile
 import tempfile
+import time
 import unittest
 
 
@@ -63,7 +64,10 @@ class DeployHelperTest(unittest.TestCase):
         self.env.update({
             "AUBOOKS_DEPLOY_ROOT": str(self.root),
             "AUBOOKS_MIN_FREE_KB": "1",
+            "AUBOOKS_HEALTH_STARTUP_TIMEOUT": "5",
+            "AUBOOKS_HEALTH_RETRY_INTERVAL": "1",
             "COMMAND_LOG": str(self.command_log),
+            "HEALTH_TEST_STATE_DIR": str(self.base),
             "PATH": str(self.fake_bin) + os.pathsep + self.env["PATH"],
         })
 
@@ -123,6 +127,15 @@ class DeployHelperTest(unittest.TestCase):
             "if [[ ${1:-} == restart && -n ${FAIL_FIRST_RESTART_FILE:-} "
             "&& ! -e $FAIL_FIRST_RESTART_FILE ]]; then "
             ": > \"$FAIL_FIRST_RESTART_FILE\"; exit 1; fi\n"
+            "if [[ ${1:-} == is-active ]]; then\n"
+            "  counter=\"$HEALTH_TEST_STATE_DIR/service-checks\"\n"
+            "  count=0; [[ -f $counter ]] && read -r count < \"$counter\"\n"
+            "  count=$((count + 1)); printf '%s\\n' \"$count\" > \"$counter\"\n"
+            "  if [[ -n ${SERVICE_FAIL_AFTER_CHECKS:-} && $count -gt $SERVICE_FAIL_AFTER_CHECKS ]]; then\n"
+            "    printf 'failed\\n'; exit 3\n"
+            "  fi\n"
+            "  printf 'active\\n'; exit 0\n"
+            "fi\n"
             "exit 0\n",
             encoding="utf-8",
         )
@@ -146,13 +159,35 @@ class DeployHelperTest(unittest.TestCase):
         )
         fake_ss = self.fake_bin / "ss"
         fake_ss.write_text(
-            "#!/usr/bin/env bash\nprintf 'LISTEN 0 128 127.0.0.1:8083 0.0.0.0:*\\n'\n",
+            "#!/usr/bin/env bash\n"
+            "counter=\"$HEALTH_TEST_STATE_DIR/port-checks\"\n"
+            "count=0; [[ -f $counter ]] && read -r count < \"$counter\"\n"
+            "count=$((count + 1)); printf '%s\\n' \"$count\" > \"$counter\"\n"
+            "if [[ -z ${PORT_NEVER:-} && $count -gt ${PORT_READY_AFTER:-0} ]]; then\n"
+            "  printf 'LISTEN 0 128 127.0.0.1:8083 0.0.0.0:*\\n'\n"
+            "fi\n",
             encoding="utf-8",
         )
         fake_curl = self.fake_bin / "curl"
-        fake_curl.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        fake_curl.write_text(
+            "#!/usr/bin/env bash\n"
+            "url=\"${@: -1}\"\n"
+            "if [[ $url == http://127.0.0.1:8083/ ]]; then\n"
+            "  counter=\"$HEALTH_TEST_STATE_DIR/http-checks\"\n"
+            "  count=0; [[ -f $counter ]] && read -r count < \"$counter\"\n"
+            "  count=$((count + 1)); printf '%s\\n' \"$count\" > \"$counter\"\n"
+            "  if [[ -n ${HTTP_NEVER:-} || $count -le ${HTTP_READY_AFTER:-0} ]]; then\n"
+            "    printf 'connection refused\\n' >&2; exit 7\n"
+            "  fi\n"
+            "fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
         fake_journalctl = self.fake_bin / "journalctl"
-        fake_journalctl.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        fake_journalctl.write_text(
+            "#!/usr/bin/env bash\nprintf 'test journal: service initialization\\n'\n",
+            encoding="utf-8",
+        )
         fake_chown = self.fake_bin / "chown"
         fake_chown.write_text(
             "#!/usr/bin/env bash\nprintf 'chown %s\\n' \"$*\" >> \"$COMMAND_LOG\"\n",
@@ -311,6 +346,86 @@ class DeployHelperTest(unittest.TestCase):
             2,
         )
         self.assertGreaterEqual(command_log.count("chmod 640 {}".format(self.app_db)), 2)
+
+    def test_health_check_waits_for_delayed_port(self):
+        started = time.monotonic()
+        result = self.run_live(PORT_READY_AFTER="2")
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertGreaterEqual(elapsed, 2)
+        self.assertIn("Deployment completed", result.stdout)
+        self.assertNotIn("Deployment failed", result.stderr)
+        self.assertEqual(
+            (self.base / "port-checks").read_text(encoding="ascii").strip(), "3"
+        )
+
+    def test_health_check_retries_http_after_port_listens(self):
+        started = time.monotonic()
+        result = self.run_live(HTTP_READY_AFTER="2")
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertGreaterEqual(elapsed, 2)
+        self.assertEqual(
+            (self.base / "http-checks").read_text(encoding="ascii").strip(), "3"
+        )
+
+    def test_health_check_fails_early_when_service_dies(self):
+        started = time.monotonic()
+        result = self.run_live(
+            AUBOOKS_HEALTH_STARTUP_TIMEOUT="10",
+            PORT_NEVER="1",
+            SERVICE_FAIL_AFTER_CHECKS="1",
+        )
+        elapsed = time.monotonic() - started
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertLess(elapsed, 5)
+        self.assertIn("service is not starting", result.stderr)
+        self.assertIn("HEALTH_SERVICE_STATE=failed", result.stderr)
+
+    def test_health_check_times_out_when_port_never_appears(self):
+        result = self.run_live(
+            AUBOOKS_HEALTH_STARTUP_TIMEOUT="2",
+            PORT_NEVER="1",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("timed out after 2s", result.stderr)
+        self.assertIn("HEALTH_PORT_STATE=not-listening", result.stderr)
+        self.assertIn("HEALTH_LAST_HTTP_RESULT=not-attempted", result.stderr)
+        self.assertIn("HEALTH_JOURNAL_BEGIN", result.stderr)
+
+    def test_rollback_health_check_waits_for_delayed_legacy_startup(self):
+        with sqlite3.connect(self.app_db) as connection:
+            connection.execute("UPDATE settings SET config_theme = 1")
+        fail_marker = self.base / "failed-first-restart"
+
+        result = self.run_live(
+            FAIL_FIRST_RESTART_FILE=str(fail_marker),
+            PORT_READY_AFTER="2",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Rollback completed", result.stderr)
+        self.assertNotIn("Rollback encountered errors", result.stderr)
+        self.assertEqual(
+            (self.base / "port-checks").read_text(encoding="ascii").strip(), "3"
+        )
+
+    def test_multi_second_startup_does_not_trigger_rollback(self):
+        started = time.monotonic()
+        result = self.run_live(
+            AUBOOKS_HEALTH_STARTUP_TIMEOUT="6",
+            PORT_READY_AFTER="3",
+        )
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertGreaterEqual(elapsed, 3)
+        self.assertIn("Deployment completed", result.stdout)
+        self.assertNotIn("Deployment failed", result.stderr)
 
     def test_rollback_plan_records_previous_release(self):
         result = self.run_dry()

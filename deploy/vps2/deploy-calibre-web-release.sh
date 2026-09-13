@@ -5,6 +5,8 @@ set -Eeuo pipefail
 readonly DEFAULT_ROOT="/opt/calibre-web"
 readonly SERVICE_NAME="calibre-web.service"
 readonly MIN_FREE_KB="${AUBOOKS_MIN_FREE_KB:-1048576}"
+readonly HEALTH_STARTUP_TIMEOUT="${AUBOOKS_HEALTH_STARTUP_TIMEOUT:-30}"
+readonly HEALTH_RETRY_INTERVAL="${AUBOOKS_HEALTH_RETRY_INTERVAL:-1}"
 
 BUNDLE_DIR=""
 COMMIT_SHA=""
@@ -69,8 +71,10 @@ done
 [[ -d "$BUNDLE_DIR" ]] || fail "bundle directory does not exist: $BUNDLE_DIR"
 [[ ! -L "$BUNDLE_DIR" ]] || fail 'bundle directory must not be a symlink'
 [[ "$MIN_FREE_KB" =~ ^[0-9]+$ ]] || fail 'AUBOOKS_MIN_FREE_KB must be a non-negative integer'
+[[ "$HEALTH_STARTUP_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || fail 'AUBOOKS_HEALTH_STARTUP_TIMEOUT must be a positive integer'
+[[ "$HEALTH_RETRY_INTERVAL" =~ ^[1-9][0-9]*$ ]] || fail 'AUBOOKS_HEALTH_RETRY_INTERVAL must be a positive integer'
 
-for command_name in chmod chown curl df flock grep id install journalctl python3 readlink runuser sha256sum ss stat systemctl; do
+for command_name in chmod chown curl df flock grep id install journalctl python3 readlink runuser sha256sum sleep ss stat systemctl; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is unavailable: $command_name"
 done
 [[ "$(id -u)" == "0" ]] || fail 'helper must run as root or through sudo'
@@ -384,23 +388,74 @@ restart_service() {
   systemctl restart "$SERVICE_NAME"
 }
 
+health_diagnostics() {
+  local reason="$1"
+  local service_state="$2"
+  local port_state="$3"
+  local http_result="$4"
+  local journal_output
+
+  printf 'ERROR: health check %s\n' "$reason" >&2
+  printf 'HEALTH_SERVICE_STATE=%s\n' "${service_state:-unknown}" >&2
+  printf 'HEALTH_PORT_STATE=%s\n' "$port_state" >&2
+  printf 'HEALTH_LAST_HTTP_RESULT=%s\n' "$http_result" >&2
+  journal_output="$(journalctl -u "$SERVICE_NAME" --since "@$DEPLOY_STARTED_AT" --no-pager -n 100 2>&1)" || true
+  printf 'HEALTH_JOURNAL_BEGIN\n%s\nHEALTH_JOURNAL_END\n' "$journal_output" >&2
+}
+
 health_check() {
+  local deadline=$((SECONDS + HEALTH_STARTUP_TIMEOUT))
+  local service_state="unknown"
+  local port_state="not-listening"
+  local last_http_result="not-attempted"
+  local local_http_output=""
   local local_ok=0
   local public_ok=0
   local login_ok=0
   local journal_output
 
-  systemctl is-active --quiet "$SERVICE_NAME" || return 1
-  ss -ltn | python3 -c 'import sys; raise SystemExit(0 if any(len(fields := line.split()) > 3 and fields[3] == "127.0.0.1:8083" for line in sys.stdin) else 1)' || return 1
-  curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:8083/" >/dev/null && local_ok=1
+  while (( SECONDS < deadline )); do
+    service_state="$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || true)"
+    case "$service_state" in
+      failed|inactive|deactivating)
+        health_diagnostics 'aborted because service is not starting' "$service_state" "$port_state" "$last_http_result"
+        return 1
+        ;;
+    esac
+
+    port_state="not-listening"
+    if ss -ltn | python3 -c 'import sys; raise SystemExit(0 if any(len(fields := line.split()) > 3 and fields[3] == "127.0.0.1:8083" for line in sys.stdin) else 1)'; then
+      port_state="listening"
+      if local_http_output="$(curl --fail --silent --show-error --max-time 3 "http://127.0.0.1:8083/" 2>&1)"; then
+        local_ok=1
+        last_http_result="success"
+        break
+      else
+        last_http_result="failure: ${local_http_output:-no response}"
+      fi
+    fi
+    sleep "$HEALTH_RETRY_INTERVAL"
+  done
+
+  if [[ "$local_ok" -ne 1 ]]; then
+    health_diagnostics "timed out after ${HEALTH_STARTUP_TIMEOUT}s" "$service_state" "$port_state" "$last_http_result"
+    return 1
+  fi
+  service_state="$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || true)"
+  if [[ "$service_state" != "active" ]]; then
+    health_diagnostics 'failed after local HTTP became ready' "$service_state" "$port_state" "$last_http_result"
+    return 1
+  fi
   curl --fail --silent --show-error --max-time 20 "$PUBLIC_URL" >/dev/null && public_ok=1
   curl --fail --silent --show-error --max-time 20 "${PUBLIC_URL%/}/login" >/dev/null && login_ok=1
   journal_output="$(journalctl -u "$SERVICE_NAME" --since "@$DEPLOY_STARTED_AT" --no-pager)" || return 1
   if grep -q 'Traceback (most recent call last)' <<< "$journal_output"; then
     return 1
   fi
-  if [[ "$local_ok" -ne 1 ]]; then
-    printf 'WARNING: local HTTP was slow or unavailable; accepting public health evidence\n' >&2
+  service_state="$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || true)"
+  if [[ "$service_state" != "active" ]]; then
+    health_diagnostics 'failed during final checks' "$service_state" "$port_state" "$last_http_result"
+    return 1
   fi
   [[ "$public_ok" -eq 1 && "$login_ok" -eq 1 ]]
 }
