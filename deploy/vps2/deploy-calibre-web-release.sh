@@ -7,20 +7,37 @@ readonly SERVICE_NAME="calibre-web.service"
 readonly MIN_FREE_KB="${AUBOOKS_MIN_FREE_KB:-1048576}"
 readonly HEALTH_STARTUP_TIMEOUT="${AUBOOKS_HEALTH_STARTUP_TIMEOUT:-30}"
 readonly HEALTH_RETRY_INTERVAL="${AUBOOKS_HEALTH_RETRY_INTERVAL:-1}"
+readonly CGROUP_ROOT="${AUBOOKS_CGROUP_ROOT:-/sys/fs/cgroup}"
 
 BUNDLE_DIR=""
 COMMIT_SHA=""
 DRY_RUN=0
 DEPLOY_ROOT="${AUBOOKS_DEPLOY_ROOT:-$DEFAULT_ROOT}"
 DEPLOY_STARTED=0
-SWITCHED=0
-DB_CHANGED=0
-SERVICE_STOPPED=0
+DESTRUCTIVE_PHASE=0
+ROLLBACK_RUNNING=0
+DB_RESTORE_REQUIRED=0
+SYMLINK_RESTORE_REQUIRED=0
+SERVICE_START_BLOCKED=0
+SERVICE_MASK_OWNED=0
+ORIGINAL_DATABASES_VALIDATED=0
 PREVIOUS_RELEASE=""
 APP_DB_BACKUP=""
 APP_DB_UID=""
 APP_DB_GID=""
 APP_DB_MODE=""
+GDRIVE_DB_BACKUP=""
+GDRIVE_DB_UID=""
+GDRIVE_DB_GID=""
+GDRIVE_DB_MODE=""
+METADATA_DB_BACKUP=""
+METADATA_DB_UID=""
+METADATA_DB_GID=""
+METADATA_DB_MODE=""
+SERVICE_ACTIVE_STATE=""
+SERVICE_MAIN_PID=""
+SERVICE_CONTROL_GROUP=""
+SERVICE_UNIT_FILE_STATE=""
 WHEEL_FILENAME=""
 WHEEL_SHA256=""
 PUBLIC_URL=""
@@ -33,6 +50,9 @@ usage() {
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
+  if [[ "${DEPLOY_STARTED:-0}" -eq 1 && "${DESTRUCTIVE_PHASE:-0}" -eq 1 && "${ROLLBACK_RUNNING:-0}" -eq 0 ]]; then
+    rollback
+  fi
   exit 1
 }
 
@@ -74,7 +94,7 @@ done
 [[ "$HEALTH_STARTUP_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || fail 'AUBOOKS_HEALTH_STARTUP_TIMEOUT must be a positive integer'
 [[ "$HEALTH_RETRY_INTERVAL" =~ ^[1-9][0-9]*$ ]] || fail 'AUBOOKS_HEALTH_RETRY_INTERVAL must be a positive integer'
 
-for command_name in chmod chown curl df flock grep id install journalctl python3 readlink runuser sha256sum sleep ss stat systemctl; do
+for command_name in chmod chown cp curl df flock grep id install journalctl ln mkdir mv python3 readlink rm runuser sha256sum sleep ss stat systemctl; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is unavailable: $command_name"
 done
 [[ "$(id -u)" == "0" ]] || fail 'helper must run as root or through sudo'
@@ -229,6 +249,21 @@ finally:
 PY
 }
 
+validate_sqlite_database() {
+  python3 - "$1" <<'PY'
+import sqlite3
+import sys
+
+connection = sqlite3.connect("file:{}?mode=ro".format(sys.argv[1]), uri=True)
+try:
+    result = connection.execute("PRAGMA integrity_check").fetchone()
+    if result != ("ok",):
+        raise SystemExit("SQLite integrity check failed for {}: {}".format(sys.argv[1], result))
+finally:
+    connection.close()
+PY
+}
+
 read_config_theme() {
   python3 - "$APP_DB" <<'PY'
 import sqlite3
@@ -275,9 +310,8 @@ validate_platform() {
   [[ "$available_kb" =~ ^[0-9]+$ ]] || fail 'could not determine free disk space'
   (( available_kb >= MIN_FREE_KB )) || fail "insufficient free space: ${available_kb}KB available, ${MIN_FREE_KB}KB required"
   validate_app_database
-  APP_DB_UID="$(stat -c '%u' "$APP_DB")"
-  APP_DB_GID="$(stat -c '%g' "$APP_DB")"
-  APP_DB_MODE="$(stat -c '%a' "$APP_DB")"
+  validate_sqlite_database "$GDRIVE_DB"
+  validate_sqlite_database "$METADATA_DB"
 }
 
 acquire_lock() {
@@ -285,21 +319,105 @@ acquire_lock() {
   flock -n 9 || fail 'another Calibre-Web deployment is already running'
 }
 
-restore_app_db_metadata() {
-  [[ -n "$APP_DB_UID" && -n "$APP_DB_GID" && -n "$APP_DB_MODE" ]] || return 0
-  chown "$APP_DB_UID:$APP_DB_GID" "$APP_DB"
-  chmod "$APP_DB_MODE" "$APP_DB"
+read_service_state() {
+  SERVICE_ACTIVE_STATE="$(systemctl show --property=ActiveState --value "$SERVICE_NAME")" || return 1
+  SERVICE_MAIN_PID="$(systemctl show --property=MainPID --value "$SERVICE_NAME")" || return 1
+  SERVICE_CONTROL_GROUP="$(systemctl show --property=ControlGroup --value "$SERVICE_NAME")" || return 1
+  [[ "$SERVICE_MAIN_PID" =~ ^[0-9]+$ ]] || return 1
 }
 
-backup_databases() {
-  local backup_dir="$BACKUPS_DIR/${COMMIT_SHA}-$(date -u +%Y%m%dT%H%M%SZ)"
-  mkdir -m 0700 "$backup_dir"
-  APP_DB_BACKUP="$backup_dir/app.db"
-  python3 - "$APP_DB" "$APP_DB_BACKUP" <<'PY'
+service_cgroup_is_empty() {
+  [[ -z "$SERVICE_CONTROL_GROUP" ]] && return 0
+  python3 - "$CGROUP_ROOT" "$SERVICE_CONTROL_GROUP" <<'PY'
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1]).resolve()
+control_group = sys.argv[2]
+if not control_group.startswith("/") or "\n" in control_group:
+    raise SystemExit(1)
+path = (root / control_group.lstrip("/")).resolve()
+try:
+    path.relative_to(root)
+except ValueError:
+    raise SystemExit(1)
+if not path.exists():
+    raise SystemExit(0)
+process_files = list(path.rglob("cgroup.procs"))
+if not process_files:
+    raise SystemExit(1)
+for process_file in process_files:
+    if process_file.read_text(encoding="ascii").split():
+        raise SystemExit(1)
+PY
+}
+
+service_is_running() {
+  read_service_state || return 1
+  [[ "$SERVICE_ACTIVE_STATE" == "active" && "$SERVICE_MAIN_PID" -gt 0 ]]
+}
+
+service_is_stopped() {
+  read_service_state || return 1
+  [[ "$SERVICE_ACTIVE_STATE" =~ ^(inactive|failed)$ && "$SERVICE_MAIN_PID" -eq 0 ]] || return 1
+  service_cgroup_is_empty
+}
+
+block_service_start() {
+  if [[ "$SERVICE_START_BLOCKED" -eq 1 ]]; then
+    SERVICE_UNIT_FILE_STATE="$(systemctl show --property=UnitFileState --value "$SERVICE_NAME")" || return 1
+    if [[ "$SERVICE_UNIT_FILE_STATE" == "masked" || "$SERVICE_UNIT_FILE_STATE" == "masked-runtime" ]]; then
+      return 0
+    fi
+    SERVICE_START_BLOCKED=0
+  fi
+  if [[ "$SERVICE_MASK_OWNED" -eq 0 ]]; then
+    SERVICE_UNIT_FILE_STATE="$(systemctl show --property=UnitFileState --value "$SERVICE_NAME")" || return 1
+    if [[ "$SERVICE_UNIT_FILE_STATE" == "masked" || "$SERVICE_UNIT_FILE_STATE" == "masked-runtime" ]]; then
+      printf 'ERROR: refusing to alter a pre-existing service mask (%s)\n' "$SERVICE_UNIT_FILE_STATE" >&2
+      return 1
+    fi
+    SERVICE_MASK_OWNED=1
+  fi
+  systemctl mask --runtime "$SERVICE_NAME" || return 1
+  SERVICE_UNIT_FILE_STATE="$(systemctl show --property=UnitFileState --value "$SERVICE_NAME")" || return 1
+  [[ "$SERVICE_UNIT_FILE_STATE" == "masked-runtime" ]] || return 1
+  SERVICE_START_BLOCKED=1
+}
+
+allow_service_start() {
+  [[ "$SERVICE_MASK_OWNED" -eq 1 ]] || return 0
+  systemctl unmask --runtime "$SERVICE_NAME" || return 1
+  SERVICE_UNIT_FILE_STATE="$(systemctl show --property=UnitFileState --value "$SERVICE_NAME")" || return 1
+  [[ "$SERVICE_UNIT_FILE_STATE" != "masked" && "$SERVICE_UNIT_FILE_STATE" != "masked-runtime" ]] || return 1
+  SERVICE_START_BLOCKED=0
+  SERVICE_MASK_OWNED=0
+}
+
+stop_service_and_confirm() {
+  local stop_status=0
+
+  systemctl stop "$SERVICE_NAME" || stop_status=$?
+  if service_is_stopped; then
+    if [[ "$stop_status" -ne 0 ]]; then
+      printf 'WARNING: systemctl stop returned %s, but %s is confirmed stopped\n' "$stop_status" "$SERVICE_NAME" >&2
+    fi
+    return 0
+  fi
+  printf 'ERROR: refusing destructive operations: %s is not confirmed stopped (ActiveState=%s MainPID=%s ControlGroup=%s)\n' \
+    "$SERVICE_NAME" "${SERVICE_ACTIVE_STATE:-unknown}" "${SERVICE_MAIN_PID:-unknown}" "${SERVICE_CONTROL_GROUP:-unknown}" >&2
+  return 1
+}
+
+snapshot_sqlite_database() {
+  local source="$1"
+  local destination="$2"
+
+  python3 - "$source" "$destination" <<'PY'
 import sqlite3
 import sys
 
-source = sqlite3.connect(sys.argv[1])
+source = sqlite3.connect("file:{}?mode=ro".format(sys.argv[1]), uri=True)
 destination = sqlite3.connect(sys.argv[2])
 try:
     source.backup(destination)
@@ -307,8 +425,46 @@ finally:
     destination.close()
     source.close()
 PY
-  cp --preserve=mode,timestamps "$GDRIVE_DB" "$backup_dir/gdrive.db"
-  printf 'Database backup created: %s\n' "$backup_dir"
+  validate_sqlite_database "$destination"
+}
+
+validate_snapshot_sources() {
+  local database
+
+  for database in "$APP_DB" "$GDRIVE_DB" "$METADATA_DB"; do
+    [[ -f "$database" && ! -L "$database" ]] || return 1
+  done
+  validate_app_database || return 1
+  validate_sqlite_database "$GDRIVE_DB" || return 1
+  validate_sqlite_database "$METADATA_DB" || return 1
+  ORIGINAL_DATABASES_VALIDATED=1
+}
+
+create_final_rollback_snapshots() {
+  local backup_dir="$BACKUPS_DIR/${COMMIT_SHA}-$(date -u +%Y%m%dT%H%M%SZ)"
+
+  service_is_stopped || fail 'final database snapshots require a confirmed stopped service'
+  validate_snapshot_sources || fail 'post-stop database source validation failed'
+  mkdir -m 0700 "$backup_dir"
+
+  APP_DB_UID="$(stat -c '%u' "$APP_DB")"
+  APP_DB_GID="$(stat -c '%g' "$APP_DB")"
+  APP_DB_MODE="$(stat -c '%a' "$APP_DB")"
+  GDRIVE_DB_UID="$(stat -c '%u' "$GDRIVE_DB")"
+  GDRIVE_DB_GID="$(stat -c '%g' "$GDRIVE_DB")"
+  GDRIVE_DB_MODE="$(stat -c '%a' "$GDRIVE_DB")"
+  METADATA_DB_UID="$(stat -c '%u' "$METADATA_DB")"
+  METADATA_DB_GID="$(stat -c '%g' "$METADATA_DB")"
+  METADATA_DB_MODE="$(stat -c '%a' "$METADATA_DB")"
+
+  APP_DB_BACKUP="$backup_dir/app.db"
+  GDRIVE_DB_BACKUP="$backup_dir/gdrive.db"
+  METADATA_DB_BACKUP="$backup_dir/metadata.db"
+  snapshot_sqlite_database "$APP_DB" "$APP_DB_BACKUP"
+  snapshot_sqlite_database "$GDRIVE_DB" "$GDRIVE_DB_BACKUP"
+  snapshot_sqlite_database "$METADATA_DB" "$METADATA_DB_BACKUP"
+  DB_RESTORE_REQUIRED=1
+  printf 'Final rollback snapshots created: %s\n' "$backup_dir"
 }
 
 create_candidate_release() {
@@ -346,16 +502,13 @@ set_aubooks_theme_if_needed() {
     printf 'CONFIG_THEME_ALREADY_3\n'
     return
   fi
-  [[ -n "$APP_DB_BACKUP" && -f "$APP_DB_BACKUP" ]] || fail 'app.db backup is required before changing config_theme'
+  [[ "$DB_RESTORE_REQUIRED" -eq 1 && -f "$APP_DB_BACKUP" ]] || fail 'final app.db snapshot is required before changing config_theme'
   runuser -u "$SERVICE_USER" -- "$RELEASE_DIR/venv/bin/python" - <<'PY'
 from calibreweb.cps import themes
 
 theme = themes.get_theme(3)
 assert theme["id"] == 3 and theme["identifier"] == "aubooks"
 PY
-  systemctl stop "$SERVICE_NAME"
-  SERVICE_STOPPED=1
-  DB_CHANGED=1
   runuser -u "$SERVICE_USER" -- python3 - "$APP_DB" <<'PY'
 import sqlite3
 import sys
@@ -373,19 +526,22 @@ except Exception:
 finally:
     connection.close()
 PY
-  restore_app_db_metadata
+  chown "$APP_DB_UID:$APP_DB_GID" "$APP_DB"
+  chmod "$APP_DB_MODE" "$APP_DB"
   printf 'config_theme changed transactionally to 3\n'
 }
 
 switch_current_release() {
   local next_link="$DEPLOY_ROOT/.current.$COMMIT_SHA"
   ln -s "$RELEASE_DIR" "$next_link"
+  SYMLINK_RESTORE_REQUIRED=1
   mv -Tf "$next_link" "$CURRENT_LINK"
-  SWITCHED=1
 }
 
-restart_service() {
-  systemctl restart "$SERVICE_NAME"
+start_service() {
+  DEPLOY_STARTED_AT="$(date +%s)"
+  export DEPLOY_STARTED_AT
+  systemctl start "$SERVICE_NAME"
 }
 
 health_diagnostics() {
@@ -476,48 +632,127 @@ PY
 }
 
 rollback() {
+  local exit_status="${1:-1}"
   local rollback_ok=1
-  local restore_tmp
+  local restoration_required=0
+
+  [[ "$ROLLBACK_RUNNING" -eq 0 ]] || exit 1
+  ROLLBACK_RUNNING=1
   trap - ERR
+  trap '' TERM INT HUP
   set +e
   printf 'Deployment failed; starting rollback. Failed release is preserved at %s\n' "$RELEASE_DIR" >&2
-  if [[ "$SWITCHED" -eq 1 || "$DB_CHANGED" -eq 1 || "$SERVICE_STOPPED" -eq 1 ]]; then
-    systemctl stop "$SERVICE_NAME" || rollback_ok=0
+  if [[ "$SYMLINK_RESTORE_REQUIRED" -eq 1 || "$DB_RESTORE_REQUIRED" -eq 1 ]]; then
+    restoration_required=1
   fi
-  if [[ "$SWITCHED" -eq 1 && -n "$PREVIOUS_RELEASE" ]]; then
-    rm -f "$DEPLOY_ROOT/.current.rollback"
-    if ln -s "$PREVIOUS_RELEASE" "$DEPLOY_ROOT/.current.rollback"; then
-      mv -Tf "$DEPLOY_ROOT/.current.rollback" "$CURRENT_LINK" || rollback_ok=0
-    else
+
+  if [[ "$restoration_required" -eq 1 ]]; then
+    if ! block_service_start; then
+      printf 'ERROR: rollback blocked because service activation could not be fenced; symlink and databases were not touched\n' >&2
       rollback_ok=0
-    fi
-  fi
-  if [[ "$DB_CHANGED" -eq 1 && -n "$APP_DB_BACKUP" ]]; then
-    restore_tmp="$CONFIG_DIR/.app.db.rollback.$COMMIT_SHA"
-    rm -f "$restore_tmp"
-    if cp --preserve=mode,timestamps "$APP_DB_BACKUP" "$restore_tmp"; then
-      rm -f "$APP_DB-wal" "$APP_DB-shm" "$APP_DB-journal"
-      if mv -f "$restore_tmp" "$APP_DB"; then
-        restore_app_db_metadata || rollback_ok=0
-      else
-        rollback_ok=0
+    elif ! stop_service_and_confirm; then
+      printf 'ERROR: rollback blocked because the service could not be confirmed stopped; symlink and databases were not touched\n' >&2
+      rollback_ok=0
+    else
+      if [[ "$SYMLINK_RESTORE_REQUIRED" -eq 1 && -n "$PREVIOUS_RELEASE" ]]; then
+        restore_current_release || rollback_ok=0
       fi
-    else
-      rollback_ok=0
+      if [[ "$DB_RESTORE_REQUIRED" -eq 1 ]]; then
+        restore_all_databases || rollback_ok=0
+      fi
     fi
+  elif service_is_stopped; then
+    if [[ "$ORIGINAL_DATABASES_VALIDATED" -ne 1 ]]; then
+      validate_snapshot_sources || rollback_ok=0
+    fi
+  elif service_is_running; then
+    printf 'Rollback required no state restoration; the original service remains running\n' >&2
+    allow_service_start || rollback_ok=0
+    DESTRUCTIVE_PHASE=0
+    if [[ "$rollback_ok" -eq 1 ]]; then
+      printf 'Rollback completed; original deployment remains failed\n' >&2
+    else
+      printf 'Rollback encountered errors; manual recovery is required\n' >&2
+    fi
+    exit "$exit_status"
+  else
+    printf 'ERROR: rollback could not determine a safe service state\n' >&2
+    rollback_ok=0
   fi
-  if [[ "$SWITCHED" -eq 1 || "$DB_CHANGED" -eq 1 || "$SERVICE_STOPPED" -eq 1 ]]; then
-    systemctl restart "$SERVICE_NAME" || rollback_ok=0
-    DEPLOY_STARTED_AT="$(date +%s)"
-    export DEPLOY_STARTED_AT
-    health_check || rollback_ok=0
+
+  if [[ "$rollback_ok" -eq 1 ]]; then
+    allow_service_start || rollback_ok=0
+    if [[ "$rollback_ok" -eq 1 ]]; then
+      start_service || rollback_ok=0
+    fi
+    if [[ "$rollback_ok" -eq 1 ]]; then
+      health_check || rollback_ok=0
+    fi
+    if [[ "$rollback_ok" -ne 1 ]]; then
+      if ! block_service_start || ! stop_service_and_confirm; then
+        printf 'ERROR: failed restored release could not be fenced and confirmed stopped\n' >&2
+      fi
+    fi
   fi
   if [[ "$rollback_ok" -eq 1 ]]; then
     printf 'Rollback completed; original deployment remains failed\n' >&2
   else
-    printf 'Rollback encountered errors; original deployment remains failed\n' >&2
+    printf 'Rollback encountered errors; manual recovery is required\n' >&2
   fi
-  exit 1
+  exit "$exit_status"
+}
+
+restore_current_release() {
+  local rollback_link="$DEPLOY_ROOT/.current.rollback"
+
+  rm -f "$rollback_link" || return 1
+  ln -s "$PREVIOUS_RELEASE" "$rollback_link" || return 1
+  mv -Tf "$rollback_link" "$CURRENT_LINK"
+}
+
+restore_sqlite_database() {
+  local target="$1"
+  local backup="$2"
+  local uid="$3"
+  local gid="$4"
+  local mode="$5"
+  local target_dir="${target%/*}"
+  local target_name="${target##*/}"
+  local restore_tmp="$target_dir/.${target_name}.rollback.$COMMIT_SHA"
+
+  [[ -f "$backup" && ! -L "$backup" ]] || return 1
+  rm -f "$restore_tmp" || return 1
+  cp --preserve=mode,timestamps "$backup" "$restore_tmp" || return 1
+  chown "$uid:$gid" "$restore_tmp" || return 1
+  chmod "$mode" "$restore_tmp" || return 1
+  validate_sqlite_database "$restore_tmp" || return 1
+  rm -f "$target-wal" "$target-shm" "$target-journal" || return 1
+  mv -f "$restore_tmp" "$target" || return 1
+  validate_sqlite_database "$target" || return 1
+  [[ "$(stat -c '%u' "$target")" == "$uid" ]] || return 1
+  [[ "$(stat -c '%g' "$target")" == "$gid" ]] || return 1
+  [[ "$(stat -c '%a' "$target")" == "$mode" ]]
+}
+
+restore_all_databases() {
+  local restore_ok=1
+
+  restore_sqlite_database "$APP_DB" "$APP_DB_BACKUP" "$APP_DB_UID" "$APP_DB_GID" "$APP_DB_MODE" || restore_ok=0
+  restore_sqlite_database "$GDRIVE_DB" "$GDRIVE_DB_BACKUP" "$GDRIVE_DB_UID" "$GDRIVE_DB_GID" "$GDRIVE_DB_MODE" || restore_ok=0
+  restore_sqlite_database "$METADATA_DB" "$METADATA_DB_BACKUP" "$METADATA_DB_UID" "$METADATA_DB_GID" "$METADATA_DB_MODE" || restore_ok=0
+  [[ "$restore_ok" -eq 1 ]]
+}
+
+abort_deploy() {
+  local status="$1"
+  local reason="$2"
+
+  trap - ERR TERM INT HUP
+  if [[ "$DEPLOY_STARTED" -eq 1 && "$DESTRUCTIVE_PHASE" -eq 1 ]]; then
+    printf 'Deployment interrupted by %s\n' "$reason" >&2
+    rollback "$status"
+  fi
+  exit "$status"
 }
 
 print_dry_run_plan() {
@@ -525,18 +760,19 @@ print_dry_run_plan() {
   current_theme="$(read_config_theme)"
   RELEASE_DIR="$RELEASES_DIR/$COMMIT_SHA"
   plan "would acquire flock on $DEPLOY_ROOT"
-  plan "would run SQLite integrity check and back up app.db and gdrive.db"
   plan "would create candidate release $RELEASE_DIR with a clean venv"
   plan "would install and verify $WHEEL_FILENAME, run pip check and cps --help"
   plan 'would verify AU theme 3:aubooks and invite imports'
+  plan "would runtime-mask and stop $SERVICE_NAME, then require inactive/failed state, MainPID=0, and an empty unit cgroup"
+  plan "would create final SQLite snapshots of app.db, gdrive.db, and metadata.db after confirmed stop"
   if [[ "$current_theme" == "3" ]]; then
     printf 'CONFIG_THEME_ALREADY_3\n'
   else
-    plan "would transactionally change config_theme from $current_theme to 3 after backup and candidate verification"
+    plan "would transactionally change config_theme from $current_theme to 3 after final snapshots"
   fi
   plan "would atomically switch current from $PREVIOUS_RELEASE to $RELEASE_DIR"
-  plan "would restart $SERVICE_NAME and run service, port, local HTTP, public HTTPS, login, and traceback checks"
-  plan "would write deployed-manifest.json; on failure would restore DB and current symlink"
+  plan "would start $SERVICE_NAME and run service, port, local HTTP, public HTTPS, login, and traceback checks"
+  plan "would write deployed-manifest.json; on failure would restore all mutable DBs and current symlink only after confirmed stop"
   printf 'ROLLBACK_PREVIOUS_RELEASE=%s\n' "$PREVIOUS_RELEASE"
 }
 
@@ -555,18 +791,24 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
 fi
 
 DEPLOY_STARTED=1
-DEPLOY_STARTED_AT="$(date +%s)"
-export DEPLOY_STARTED_AT
-trap 'if [[ "$DEPLOY_STARTED" -eq 1 ]]; then rollback; fi' ERR
+trap 'abort_deploy $? ERR' ERR
+trap 'abort_deploy 143 TERM' TERM
+trap 'abort_deploy 130 INT' INT
+trap 'abort_deploy 129 HUP' HUP
 
-validate_app_database
-backup_databases
 create_candidate_release
+service_is_running || fail "$SERVICE_NAME must be active with a non-zero MainPID before deployment"
+DESTRUCTIVE_PHASE=1
+block_service_start
+stop_service_and_confirm
+create_final_rollback_snapshots
 set_aubooks_theme_if_needed
 switch_current_release
-restart_service
+allow_service_start
+start_service
 health_check
 write_deployed_manifest
 DEPLOY_STARTED=0
-trap - ERR
+DESTRUCTIVE_PHASE=0
+trap - ERR TERM INT HUP
 printf 'Deployment completed: %s\n' "$COMMIT_SHA"

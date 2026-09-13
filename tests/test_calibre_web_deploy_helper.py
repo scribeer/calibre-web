@@ -48,8 +48,23 @@ class DeployHelperTest(unittest.TestCase):
         connection.execute("INSERT INTO settings (id, config_theme) VALUES (1, 3)")
         connection.commit()
         connection.close()
-        (self.root / "config" / "gdrive.db").write_bytes(b"gdrive")
-        (self.root / "library" / "metadata.db").write_bytes(b"metadata")
+        self.gdrive_db = self.root / "config" / "gdrive.db"
+        with sqlite3.connect(self.gdrive_db) as connection:
+            connection.execute("CREATE TABLE state (value TEXT)")
+            connection.execute("INSERT INTO state VALUES ('gdrive-original')")
+        self.metadata_db = self.root / "library" / "metadata.db"
+        with sqlite3.connect(self.metadata_db) as connection:
+            connection.execute("CREATE TABLE books (title TEXT)")
+            connection.execute("INSERT INTO books VALUES ('metadata-original')")
+        self.service_state = self.base / "service-state"
+        self.service_pid = self.base / "service-pid"
+        self.cgroup_root = self.base / "cgroup"
+        self.service_cgroup = self.cgroup_root / "calibre-web.service"
+        self.service_cgroup.mkdir(parents=True)
+        self.cgroup_processes = self.service_cgroup / "cgroup.procs"
+        self.service_state.write_text("active\n", encoding="ascii")
+        self.service_pid.write_text("4242\n", encoding="ascii")
+        self.cgroup_processes.write_text("4242\n", encoding="ascii")
 
         self.wheel_name = "calibreweb-0.6.28b0-py3-none-any.whl"
         self.wheel = self.bundle / self.wheel_name
@@ -66,8 +81,14 @@ class DeployHelperTest(unittest.TestCase):
             "AUBOOKS_MIN_FREE_KB": "1",
             "AUBOOKS_HEALTH_STARTUP_TIMEOUT": "5",
             "AUBOOKS_HEALTH_RETRY_INTERVAL": "1",
+            "AUBOOKS_CGROUP_ROOT": str(self.cgroup_root),
             "COMMAND_LOG": str(self.command_log),
             "HEALTH_TEST_STATE_DIR": str(self.base),
+            "SERVICE_STATE_FILE": str(self.service_state),
+            "SERVICE_PID_FILE": str(self.service_pid),
+            "APP_DB": str(self.app_db),
+            "GDRIVE_DB": str(self.gdrive_db),
+            "METADATA_DB": str(self.metadata_db),
             "PATH": str(self.fake_bin) + os.pathsep + self.env["PATH"],
         })
 
@@ -122,11 +143,74 @@ class DeployHelperTest(unittest.TestCase):
         fake_systemctl.write_text(
             "#!/usr/bin/env bash\n"
             "if [[ ${1:-} == cat ]]; then exit 0; fi\n"
-            "if [[ ${1:-} == show ]]; then printf 'calibre-web\\n'; exit 0; fi\n"
+            "if [[ ${1:-} == show ]]; then\n"
+            "  case \" $* \" in\n"
+            "    *' --property=User '*) printf 'calibre-web\\n' ;;\n"
+            "    *' --property=ActiveState '*) cat \"$SERVICE_STATE_FILE\" ;;\n"
+            "    *' --property=MainPID '*) cat \"$SERVICE_PID_FILE\" ;;\n"
+            "    *' --property=ControlGroup '*) printf '/calibre-web.service\\n' ;;\n"
+            "    *' --property=UnitFileState '*) if [[ -e $HEALTH_TEST_STATE_DIR/service-masked ]]; then printf 'masked-runtime\\n'; else printf 'enabled\\n'; fi ;;\n"
+            "    *) exit 1 ;;\n"
+            "  esac\n"
+            "  exit 0\n"
+            "fi\n"
             "printf '%s\\n' \"$*\" >> \"$COMMAND_LOG\"\n"
-            "if [[ ${1:-} == restart && -n ${FAIL_FIRST_RESTART_FILE:-} "
-            "&& ! -e $FAIL_FIRST_RESTART_FILE ]]; then "
-            ": > \"$FAIL_FIRST_RESTART_FILE\"; exit 1; fi\n"
+            "if [[ ${1:-} == mask ]]; then : > \"$HEALTH_TEST_STATE_DIR/service-masked\"; exit 0; fi\n"
+            "if [[ ${1:-} == unmask ]]; then\n"
+            "  [[ -z ${FAIL_UNMASK:-} ]] || exit 1\n"
+            "  counter=\"$HEALTH_TEST_STATE_DIR/unmask-count\"\n"
+            "  count=0; [[ -f $counter ]] && read -r count < \"$counter\"\n"
+            "  count=$((count + 1)); printf '%s\\n' \"$count\" > \"$counter\"\n"
+            "  /usr/bin/rm -f \"$HEALTH_TEST_STATE_DIR/service-masked\"\n"
+            "  if [[ $count -eq 1 && -n ${SIGNAL_ON_FIRST_UNMASK:-} ]]; then kill -s \"$SIGNAL_ON_FIRST_UNMASK\" \"$PPID\"; fi\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ ${1:-} == stop ]]; then\n"
+            "  counter=\"$HEALTH_TEST_STATE_DIR/stop-count\"\n"
+            "  count=0; [[ -f $counter ]] && read -r count < \"$counter\"\n"
+            "  count=$((count + 1)); printf '%s\\n' \"$count\" > \"$counter\"\n"
+            "  if [[ -n ${STOP_LEAVES_RUNNING:-} || ( -n ${FAIL_STOP_AFTER:-} && $count -gt $FAIL_STOP_AFTER ) ]]; then exit 1; fi\n"
+            "  if [[ -n ${MUTATE_DBS_ON_STOP:-} ]]; then\n"
+            "    /usr/bin/python3 - \"$APP_DB\" \"$GDRIVE_DB\" \"$METADATA_DB\" <<'PY'\n"
+            "import sqlite3, sys\n"
+            "with sqlite3.connect(sys.argv[1]) as db: db.execute('UPDATE settings SET config_theme = 7')\n"
+            "with sqlite3.connect(sys.argv[2]) as db: db.execute(\"UPDATE state SET value = 'gdrive-at-stop'\")\n"
+            "with sqlite3.connect(sys.argv[3]) as db: db.execute(\"UPDATE books SET title = 'metadata-at-stop'\")\n"
+            "PY\n"
+            "  fi\n"
+            "  [[ -z ${CORRUPT_GDRIVE_ON_STOP:-} ]] || printf 'not a SQLite database' > \"$GDRIVE_DB\"\n"
+            "  printf 'inactive\\n' > \"$SERVICE_STATE_FILE\"\n"
+            "  printf '0\\n' > \"$SERVICE_PID_FILE\"\n"
+            "  if [[ -n ${REMAINING_WORKER_AFTER_STOP:-} ]]; then printf '777\\n' > \"$AUBOOKS_CGROUP_ROOT/calibre-web.service/cgroup.procs\"; else : > \"$AUBOOKS_CGROUP_ROOT/calibre-web.service/cgroup.procs\"; fi\n"
+            "  [[ -z ${SIGNAL_ON_STOP:-} ]] || kill -s \"$SIGNAL_ON_STOP\" \"$PPID\"\n"
+            "  [[ -z ${STOP_EXIT_NONZERO:-} ]] || exit 1\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ ${1:-} == start || ${1:-} == restart ]]; then\n"
+            "  [[ ! -e $HEALTH_TEST_STATE_DIR/service-masked ]] || exit 1\n"
+            "  counter=\"$HEALTH_TEST_STATE_DIR/start-count\"\n"
+            "  count=0; [[ -f $counter ]] && read -r count < \"$counter\"\n"
+            "  count=$((count + 1)); printf '%s\\n' \"$count\" > \"$counter\"\n"
+            "  if [[ $count -eq 1 && -n ${MUTATE_DBS_ON_FIRST_START:-} ]]; then\n"
+            "    /usr/bin/python3 - \"$APP_DB\" \"$GDRIVE_DB\" \"$METADATA_DB\" <<'PY'\n"
+            "import sqlite3, sys\n"
+            "with sqlite3.connect(sys.argv[1]) as db: db.execute('UPDATE settings SET config_theme = 99')\n"
+            "with sqlite3.connect(sys.argv[2]) as db: db.execute(\"UPDATE state SET value = 'gdrive-mutated'\")\n"
+            "with sqlite3.connect(sys.argv[3]) as db: db.execute(\"UPDATE books SET title = 'metadata-mutated'\")\n"
+            "PY\n"
+            "  fi\n"
+            "  if [[ $count -eq 1 && -n ${CREATE_SIDECARS_ON_FIRST_START:-} ]]; then\n"
+            "    : > \"$APP_DB-wal\"; : > \"$GDRIVE_DB-shm\"; : > \"$METADATA_DB-journal\"\n"
+            "  fi\n"
+            "  if [[ $count -eq 1 && -n ${FAIL_FIRST_RESTART_FILE:-} && ! -e $FAIL_FIRST_RESTART_FILE ]]; then\n"
+            "    : > \"$FAIL_FIRST_RESTART_FILE\"\n"
+            "    printf 'failed\\n' > \"$SERVICE_STATE_FILE\"; printf '0\\n' > \"$SERVICE_PID_FILE\"; exit 1\n"
+            "  fi\n"
+            "  printf 'active\\n' > \"$SERVICE_STATE_FILE\"; printf '4242\\n' > \"$SERVICE_PID_FILE\"\n"
+            "  printf '4242\\n' > \"$AUBOOKS_CGROUP_ROOT/calibre-web.service/cgroup.procs\"\n"
+            "  if [[ $count -eq 1 && -n ${SIGNAL_ON_FIRST_START:-} ]]; then kill -s \"$SIGNAL_ON_FIRST_START\" \"$PPID\"; fi\n"
+            "  exit 0\n"
+            "fi\n"
             "if [[ ${1:-} == is-active ]]; then\n"
             "  counter=\"$HEALTH_TEST_STATE_DIR/service-checks\"\n"
             "  count=0; [[ -f $counter ]] && read -r count < \"$counter\"\n"
@@ -134,7 +218,9 @@ class DeployHelperTest(unittest.TestCase):
             "  if [[ -n ${SERVICE_FAIL_AFTER_CHECKS:-} && $count -gt $SERVICE_FAIL_AFTER_CHECKS ]]; then\n"
             "    printf 'failed\\n'; exit 3\n"
             "  fi\n"
-            "  printf 'active\\n'; exit 0\n"
+            "  state=$(cat \"$SERVICE_STATE_FILE\")\n"
+            "  printf '%s\\n' \"$state\"\n"
+            "  [[ $state == active ]]\n"
             "fi\n"
             "exit 0\n",
             encoding="utf-8",
@@ -150,6 +236,10 @@ class DeployHelperTest(unittest.TestCase):
         fake_runuser = self.fake_bin / "runuser"
         fake_runuser.write_text(
             "#!/usr/bin/env bash\n"
+            "if [[ -n ${SIGNAL_BEFORE_DESTRUCTIVE:-} && ! -e $HEALTH_TEST_STATE_DIR/pre-destructive-signal ]]; then\n"
+            "  : > \"$HEALTH_TEST_STATE_DIR/pre-destructive-signal\"\n"
+            "  kill -s \"$SIGNAL_BEFORE_DESTRUCTIVE\" \"$PPID\"\n"
+            "fi\n"
             "shift 2\n"
             "[[ ${1:-} == -- ]] && shift\n"
             "if [[ ${1:-} == python3 && ${2:-} == - && ${3:-} == */config/app.db ]]; then "
@@ -199,9 +289,27 @@ class DeployHelperTest(unittest.TestCase):
             "exec /usr/bin/chmod \"$@\"\n",
             encoding="utf-8",
         )
+        fake_rm = self.fake_bin / "rm"
+        fake_rm.write_text(
+            "#!/usr/bin/env bash\n"
+            "if [[ -n ${FAIL_SIDECAR_DB:-} ]]; then\n"
+            "  for argument in \"$@\"; do\n"
+            "    if [[ $argument == *\"$FAIL_SIDECAR_DB\"-wal || $argument == *\"$FAIL_SIDECAR_DB\"-shm || $argument == *\"$FAIL_SIDECAR_DB\"-journal ]]; then exit 1; fi\n"
+            "  done\n"
+            "fi\n"
+            "exec /usr/bin/rm \"$@\"\n",
+            encoding="utf-8",
+        )
+        fake_mv = self.fake_bin / "mv"
+        fake_mv.write_text(
+            "#!/usr/bin/env bash\n"
+            "if [[ -n ${FAIL_ROLLBACK_SYMLINK_MOVE:-} && \" $* \" == *\"/.current.rollback \"* ]]; then exit 1; fi\n"
+            "exec /usr/bin/mv \"$@\"\n",
+            encoding="utf-8",
+        )
         for path in (
             fake_id, fake_systemctl, fake_install, fake_runuser, fake_ss,
-            fake_curl, fake_journalctl, fake_chown, fake_chmod,
+            fake_curl, fake_journalctl, fake_chown, fake_chmod, fake_rm, fake_mv,
         ):
             path.chmod(0o755)
 
@@ -244,6 +352,28 @@ class DeployHelperTest(unittest.TestCase):
             else:
                 snapshot.append((relative, "directory", None))
         return snapshot
+
+    def database_values(self):
+        with sqlite3.connect(self.app_db) as connection:
+            theme = connection.execute("SELECT config_theme FROM settings").fetchone()[0]
+        with sqlite3.connect(self.gdrive_db) as connection:
+            gdrive = connection.execute("SELECT value FROM state").fetchone()[0]
+        with sqlite3.connect(self.metadata_db) as connection:
+            metadata = connection.execute("SELECT title FROM books").fetchone()[0]
+        return theme, gdrive, metadata
+
+    def assert_candidate_start_signal_rolls_back(self, signal_name):
+        result = self.run_live(
+            SIGNAL_ON_FIRST_START=signal_name,
+            MUTATE_DBS_ON_FIRST_START="1",
+        )
+
+        expected_status = {"HUP": 129, "INT": 130, "TERM": 143}[signal_name]
+        self.assertEqual(result.returncode, expected_status)
+        self.assertIn("interrupted by {}".format(signal_name), result.stderr)
+        self.assertIn("Rollback completed", result.stderr)
+        self.assertEqual(self.database_values(), (3, "gdrive-original", "metadata-original"))
+        self.assertEqual((self.root / "current").resolve(), self.previous.resolve())
 
     def test_invalid_sha_rejected(self):
         result = self.run_helper("--bundle-dir", str(self.bundle), "--commit-sha", "not-a-sha")
@@ -341,11 +471,11 @@ class DeployHelperTest(unittest.TestCase):
         self.assertTrue(os.access(self.app_db, os.W_OK))
         self.assertEqual((self.root / "current").resolve(), self.previous.resolve())
         command_log = self.command_log.read_text(encoding="utf-8")
-        self.assertGreaterEqual(
-            command_log.count("chown {}:{} {}".format(before.st_uid, before.st_gid, self.app_db)),
-            2,
+        self.assertIn(
+            "chown {}:{} {}".format(before.st_uid, before.st_gid, self.app_db),
+            command_log,
         )
-        self.assertGreaterEqual(command_log.count("chmod 640 {}".format(self.app_db)), 2)
+        self.assertIn(".app.db.rollback.{}".format(VALID_SHA), command_log)
 
     def test_health_check_waits_for_delayed_port(self):
         started = time.monotonic()
@@ -413,6 +543,245 @@ class DeployHelperTest(unittest.TestCase):
         self.assertEqual(
             (self.base / "port-checks").read_text(encoding="ascii").strip(), "3"
         )
+
+    def test_stop_success_without_stopped_state_touches_no_shared_state(self):
+        before = self.database_values()
+
+        result = self.run_live(STOP_LEAVES_RUNNING="1")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not confirmed stopped", result.stderr)
+        self.assertEqual(self.database_values(), before)
+        self.assertEqual((self.root / "current").resolve(), self.previous.resolve())
+        self.assertEqual(list((self.root / "backups").iterdir()), [])
+        self.assertNotIn("start calibre-web.service", self.command_log.read_text(encoding="utf-8"))
+
+    def test_nonzero_stop_with_confirmed_inactive_state_continues(self):
+        result = self.run_live(STOP_EXIT_NONZERO="1")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("confirmed stopped", result.stderr)
+        self.assertIn("Deployment completed", result.stdout)
+
+    def test_stopped_main_pid_with_remaining_cgroup_worker_is_rejected(self):
+        before = self.database_values()
+
+        result = self.run_live(REMAINING_WORKER_AFTER_STOP="1")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not confirmed stopped", result.stderr)
+        self.assertEqual(self.database_values(), before)
+        self.assertEqual((self.root / "current").resolve(), self.previous.resolve())
+        self.assertEqual(list((self.root / "backups").iterdir()), [])
+        self.assertFalse((self.base / "start-count").exists())
+
+    def test_final_snapshots_include_state_written_during_stop(self):
+        fail_marker = self.base / "failed-first-start"
+
+        result = self.run_live(
+            MUTATE_DBS_ON_STOP="1",
+            MUTATE_DBS_ON_FIRST_START="1",
+            FAIL_FIRST_RESTART_FILE=str(fail_marker),
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.database_values(), (7, "gdrive-at-stop", "metadata-at-stop"))
+
+    def test_post_stop_source_validation_failure_keeps_service_stopped(self):
+        result = self.run_live(CORRUPT_GDRIVE_ON_STOP="1")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("post-stop database source validation failed", result.stderr)
+        self.assertEqual((self.root / "current").resolve(), self.previous.resolve())
+        self.assertEqual(self.service_state.read_text(encoding="ascii").strip(), "inactive")
+        self.assertTrue((self.base / "service-masked").exists())
+        self.assertFalse((self.base / "start-count").exists())
+
+    def test_service_is_runtime_masked_during_shared_state_changes(self):
+        result = self.run_live()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.command_log.read_text(encoding="utf-8").splitlines()
+        self.assertLess(commands.index("mask --runtime calibre-web.service"), commands.index("stop calibre-web.service"))
+        self.assertLess(commands.index("stop calibre-web.service"), commands.index("unmask --runtime calibre-web.service"))
+        self.assertLess(commands.index("unmask --runtime calibre-web.service"), commands.index("start calibre-web.service"))
+        self.assertFalse((self.base / "service-masked").exists())
+
+    def test_rollback_reapplies_runtime_mask_before_restore(self):
+        fail_marker = self.base / "failed-first-start"
+
+        result = self.run_live(FAIL_FIRST_RESTART_FILE=str(fail_marker))
+
+        self.assertNotEqual(result.returncode, 0)
+        commands = self.command_log.read_text(encoding="utf-8").splitlines()
+        mask_indexes = [index for index, command in enumerate(commands) if command == "mask --runtime calibre-web.service"]
+        stop_indexes = [index for index, command in enumerate(commands) if command == "stop calibre-web.service"]
+        self.assertEqual(len(mask_indexes), 2)
+        self.assertEqual(len(stop_indexes), 2)
+        self.assertLess(mask_indexes[1], stop_indexes[1])
+
+    def test_preexisting_runtime_mask_is_preserved(self):
+        (self.base / "service-masked").touch()
+
+        result = self.run_live()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("pre-existing service mask", result.stderr)
+        self.assertTrue((self.base / "service-masked").exists())
+        commands = self.command_log.read_text(encoding="utf-8") if self.command_log.exists() else ""
+        self.assertNotIn("stop calibre-web.service", commands)
+        self.assertNotIn("unmask --runtime calibre-web.service", commands)
+
+    def test_unmask_failure_after_switch_blocks_restart(self):
+        result = self.run_live(FAIL_UNMASK="1")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Rollback encountered errors", result.stderr)
+        self.assertEqual(self.database_values(), (3, "gdrive-original", "metadata-original"))
+        self.assertEqual((self.root / "current").resolve(), self.previous.resolve())
+        self.assertEqual(self.service_state.read_text(encoding="ascii").strip(), "inactive")
+        self.assertTrue((self.base / "service-masked").exists())
+        self.assertFalse((self.base / "start-count").exists())
+
+    def test_signal_during_unmask_refences_service_before_rollback(self):
+        result = self.run_live(SIGNAL_ON_FIRST_UNMASK="TERM")
+
+        self.assertEqual(result.returncode, 143)
+        self.assertIn("Rollback completed", result.stderr)
+        self.assertEqual((self.root / "current").resolve(), self.previous.resolve())
+        commands = self.command_log.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(commands.count("mask --runtime calibre-web.service"), 2)
+        self.assertFalse((self.base / "service-masked").exists())
+
+    def test_candidate_startup_mutations_in_all_databases_are_restored(self):
+        fail_marker = self.base / "failed-first-start"
+
+        result = self.run_live(
+            MUTATE_DBS_ON_FIRST_START="1",
+            FAIL_FIRST_RESTART_FILE=str(fail_marker),
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Rollback completed", result.stderr)
+        self.assertEqual(self.database_values(), (3, "gdrive-original", "metadata-original"))
+        backup_dir = next((self.root / "backups").iterdir())
+        for database_name in ("app.db", "gdrive.db", "metadata.db"):
+            with sqlite3.connect(backup_dir / database_name) as connection:
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+
+    def test_sqlite_backup_captures_committed_wal_content(self):
+        connection = sqlite3.connect(self.gdrive_db)
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("UPDATE state SET value = 'gdrive-in-wal'")
+        connection.commit()
+        fail_marker = self.base / "failed-first-start"
+        try:
+            result = self.run_live(
+                MUTATE_DBS_ON_FIRST_START="1",
+                FAIL_FIRST_RESTART_FILE=str(fail_marker),
+            )
+        finally:
+            connection.close()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.database_values()[1], "gdrive-in-wal")
+
+    def test_rollback_refuses_restore_when_candidate_cannot_be_stopped(self):
+        result = self.run_live(
+            AUBOOKS_HEALTH_STARTUP_TIMEOUT="2",
+            HTTP_NEVER="1",
+            FAIL_STOP_AFTER="1",
+            MUTATE_DBS_ON_FIRST_START="1",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("rollback blocked", result.stderr)
+        self.assertIn("manual recovery is required", result.stderr)
+        self.assertEqual(self.database_values(), (99, "gdrive-mutated", "metadata-mutated"))
+        self.assertEqual((self.root / "current").resolve(), (self.root / "releases" / VALID_SHA).resolve())
+        self.assertEqual((self.base / "start-count").read_text(encoding="ascii").strip(), "1")
+
+    def test_sidecar_removal_failure_blocks_database_replace_and_restart(self):
+        fail_marker = self.base / "failed-first-start"
+
+        result = self.run_live(
+            MUTATE_DBS_ON_FIRST_START="1",
+            CREATE_SIDECARS_ON_FIRST_START="1",
+            FAIL_FIRST_RESTART_FILE=str(fail_marker),
+            FAIL_SIDECAR_DB="gdrive.db",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Rollback encountered errors", result.stderr)
+        self.assertEqual(self.database_values()[1], "gdrive-mutated")
+        self.assertTrue(Path(str(self.gdrive_db) + "-shm").exists())
+        self.assertEqual((self.base / "start-count").read_text(encoding="ascii").strip(), "1")
+
+    def test_successful_rollback_removes_all_database_sidecars(self):
+        fail_marker = self.base / "failed-first-start"
+
+        result = self.run_live(
+            MUTATE_DBS_ON_FIRST_START="1",
+            CREATE_SIDECARS_ON_FIRST_START="1",
+            FAIL_FIRST_RESTART_FILE=str(fail_marker),
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Rollback completed", result.stderr)
+        self.assertEqual(self.database_values(), (3, "gdrive-original", "metadata-original"))
+        for database in (self.app_db, self.gdrive_db, self.metadata_db):
+            for suffix in ("-wal", "-shm", "-journal"):
+                self.assertFalse(Path(str(database) + suffix).exists())
+
+    def test_failed_restored_release_health_check_is_stopped(self):
+        result = self.run_live(SERVICE_FAIL_AFTER_CHECKS="0")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Rollback encountered errors", result.stderr)
+        self.assertEqual(self.service_state.read_text(encoding="ascii").strip(), "inactive")
+        self.assertEqual(self.service_pid.read_text(encoding="ascii").strip(), "0")
+        self.assertEqual(self.cgroup_processes.read_text(encoding="ascii"), "")
+
+    def test_symlink_restore_failure_blocks_restart(self):
+        fail_marker = self.base / "failed-first-start"
+
+        result = self.run_live(
+            FAIL_FIRST_RESTART_FILE=str(fail_marker),
+            FAIL_ROLLBACK_SYMLINK_MOVE="1",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Rollback encountered errors", result.stderr)
+        self.assertEqual((self.root / "current").resolve(), (self.root / "releases" / VALID_SHA).resolve())
+        self.assertEqual((self.base / "start-count").read_text(encoding="ascii").strip(), "1")
+
+    def test_signal_before_destructive_phase_does_not_run_rollback(self):
+        result = self.run_live(SIGNAL_BEFORE_DESTRUCTIVE="TERM")
+
+        self.assertEqual(result.returncode, 143)
+        self.assertNotIn("starting rollback", result.stderr)
+        self.assertEqual(self.database_values(), (3, "gdrive-original", "metadata-original"))
+        self.assertEqual((self.root / "current").resolve(), self.previous.resolve())
+        self.assertFalse(self.command_log.exists())
+
+    def test_signal_after_confirmed_stop_restarts_original_service(self):
+        result = self.run_live(SIGNAL_ON_STOP="TERM")
+
+        self.assertEqual(result.returncode, 143)
+        self.assertIn("interrupted by TERM", result.stderr)
+        self.assertIn("Rollback completed", result.stderr)
+        self.assertEqual(self.database_values(), (3, "gdrive-original", "metadata-original"))
+        self.assertEqual((self.root / "current").resolve(), self.previous.resolve())
+        self.assertEqual((self.base / "start-count").read_text(encoding="ascii").strip(), "1")
+
+    def test_term_during_candidate_start_rolls_back(self):
+        self.assert_candidate_start_signal_rolls_back("TERM")
+
+    def test_int_during_candidate_start_rolls_back(self):
+        self.assert_candidate_start_signal_rolls_back("INT")
+
+    def test_hup_during_candidate_start_rolls_back(self):
+        self.assert_candidate_start_signal_rolls_back("HUP")
 
     def test_multi_second_startup_does_not_trigger_rollback(self):
         started = time.monotonic()
