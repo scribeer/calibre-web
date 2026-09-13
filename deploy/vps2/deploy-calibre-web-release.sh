@@ -269,7 +269,7 @@ create_candidate_release() {
     sha256sum -c SHA256SUMS >/dev/null
   )
   runuser -u "$SERVICE_USER" -- python3 -m venv "$venv"
-  runuser -u "$SERVICE_USER" -- "$venv/bin/python" -m pip install --only-binary=:all: "$release_wheel"
+  runuser -u "$SERVICE_USER" -- "$venv/bin/python" -m pip install "$release_wheel"
   runuser -u "$SERVICE_USER" -- "$venv/bin/python" -m pip check
   (
     cd /
