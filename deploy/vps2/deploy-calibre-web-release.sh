@@ -114,6 +114,12 @@ if not re.fullmatch(r"calibreweb-[A-Za-z0-9_.+!-]+\.whl", wheel_filename):
     raise SystemExit("manifest wheel filename is invalid")
 if not re.fullmatch(r"[0-9a-f]{64}", wheel_sha256):
     raise SystemExit("manifest wheel SHA-256 is invalid")
+helper_filename = manifest.get("helper_filename", "")
+helper_sha256 = manifest.get("helper_sha256", "")
+if helper_filename != "deploy-calibre-web-release.sh":
+    raise SystemExit("manifest helper filename is invalid")
+if not re.fullmatch(r"[0-9a-f]{64}", helper_sha256):
+    raise SystemExit("manifest helper SHA-256 is invalid")
 if request.get("commit_sha") != commit_sha:
     raise SystemExit("deploy request commit SHA mismatch")
 if request.get("wheel_filename") != wheel_filename:
@@ -132,35 +138,67 @@ if not re.fullmatch(r"https://[^\s/]+(?:/.*)?", public_url):
 print(wheel_filename)
 print(wheel_sha256)
 print(public_url)
+print(helper_filename)
+print(helper_sha256)
 PY
-)" || fail 'bundle manifest validation failed'
+  )" || fail 'bundle manifest validation failed'
   mapfile -t manifest_values <<< "$manifest_output"
-  [[ "${#manifest_values[@]}" -eq 3 ]] || fail 'bundle manifest output is incomplete'
+  [[ "${#manifest_values[@]}" -eq 5 ]] || fail 'bundle manifest output is incomplete'
   WHEEL_FILENAME="${manifest_values[0]}"
   WHEEL_SHA256="${manifest_values[1]}"
   PUBLIC_URL="${manifest_values[2]}"
+  HELPER_FILENAME="${manifest_values[3]}"
+  HELPER_SHA256="${manifest_values[4]}"
 
   [[ -f "$BUNDLE_DIR/$WHEEL_FILENAME" && ! -L "$BUNDLE_DIR/$WHEEL_FILENAME" ]] || fail 'manifest wheel is missing or unsafe'
-  python3 - "$BUNDLE_DIR/$WHEEL_FILENAME" "$BUNDLE_DIR/SHA256SUMS" "$WHEEL_FILENAME" "$WHEEL_SHA256" <<'PY'
+  [[ -f "$BUNDLE_DIR/$HELPER_FILENAME" && ! -L "$BUNDLE_DIR/$HELPER_FILENAME" ]] || fail 'manifest helper is missing or unsafe'
+  python3 - "$BUNDLE_DIR/$WHEEL_FILENAME" "$BUNDLE_DIR/$HELPER_FILENAME" "$BUNDLE_DIR/SHA256SUMS" "$WHEEL_FILENAME" "$WHEEL_SHA256" "$HELPER_FILENAME" "$HELPER_SHA256" <<'PY'
 import hashlib
 import pathlib
 import sys
 
 wheel = pathlib.Path(sys.argv[1])
-sums = pathlib.Path(sys.argv[2]).read_text(encoding="ascii").splitlines()
-if len(sums) != 1:
-    raise SystemExit("SHA256SUMS must contain exactly one entry")
-parts = sums[0].split()
-if len(parts) != 2 or parts[0] != sys.argv[4] or parts[1].lstrip("*") != sys.argv[3]:
-    raise SystemExit("SHA256SUMS does not match the manifest")
-digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
-if digest != sys.argv[4]:
-    raise SystemExit("wheel checksum mismatch")
+helper = pathlib.Path(sys.argv[2])
+sums = pathlib.Path(sys.argv[3]).read_text(encoding="ascii").splitlines()
+expected_wheel_name = sys.argv[4]
+expected_wheel_sha = sys.argv[5]
+expected_helper_name = sys.argv[6]
+expected_helper_sha = sys.argv[7]
+
+allowed_names = {expected_wheel_name, expected_helper_name}
+entries = {}
+for line in sums:
+    parts = line.split()
+    if len(parts) != 2:
+        raise SystemExit("SHA256SUMS line has invalid format: {}".format(line))
+    digest, name = parts
+    name = name.lstrip("*")
+    if name in entries:
+        raise SystemExit("SHA256SUMS contains duplicate entry: {}".format(name))
+    if name not in allowed_names:
+        raise SystemExit("SHA256SUMS contains unexpected entry: {}".format(name))
+    if not __import__("re").fullmatch(r"[0-9a-f]{64}", digest):
+        raise SystemExit("SHA256SUMS has malformed checksum for {}".format(name))
+    entries[name] = digest
+
+if len(entries) != 2:
+    raise SystemExit("SHA256SUMS must contain exactly 2 entries, found {}".format(len(entries)))
+if entries[expected_wheel_name] != expected_wheel_sha:
+    raise SystemExit("SHA256SUMS wheel checksum does not match manifest")
+if entries[expected_helper_name] != expected_helper_sha:
+    raise SystemExit("SHA256SUMS helper checksum does not match manifest")
+
+wheel_digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+if wheel_digest != expected_wheel_sha:
+    raise SystemExit("wheel file checksum mismatch")
+helper_digest = hashlib.sha256(helper.read_bytes()).hexdigest()
+if helper_digest != expected_helper_sha:
+    raise SystemExit("helper file checksum mismatch")
 PY
   (
     cd "$BUNDLE_DIR"
     sha256sum -c SHA256SUMS >/dev/null
-  ) || fail 'wheel checksum verification failed'
+  ) || fail 'bundle checksum verification failed'
 }
 
 validate_app_database() {

@@ -53,6 +53,9 @@ class DeployHelperTest(unittest.TestCase):
         self.wheel_name = "calibreweb-0.6.28b0-py3-none-any.whl"
         self.wheel = self.bundle / self.wheel_name
         self.wheel.write_bytes(b"synthetic wheel for preflight tests")
+        self.helper_name = "deploy-calibre-web-release.sh"
+        self.helper = self.bundle / self.helper_name
+        self.helper.write_text("#!/usr/bin/env bash\nexit 0\n")
         self.write_bundle()
         self.write_fake_commands()
 
@@ -69,6 +72,7 @@ class DeployHelperTest(unittest.TestCase):
 
     def write_bundle(self, manifest_sha=VALID_SHA):
         digest = hashlib.sha256(self.wheel.read_bytes()).hexdigest()
+        helper_digest = hashlib.sha256(self.helper.read_bytes()).hexdigest()
         manifest = {
             "repository": "scribeer/calibre-web",
             "commit_sha": manifest_sha,
@@ -77,6 +81,8 @@ class DeployHelperTest(unittest.TestCase):
             "run_attempt": "1",
             "wheel_filename": self.wheel_name,
             "wheel_sha256": digest,
+            "helper_filename": self.helper_name,
+            "helper_sha256": helper_digest,
             "package_version": "0.6.28b0",
             "python_version": "3.12.14",
             "build_time_utc": "2026-09-13T00:00:00Z",
@@ -95,7 +101,8 @@ class DeployHelperTest(unittest.TestCase):
         (self.bundle / "artifact-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         (self.bundle / "deploy-request.json").write_text(json.dumps(request), encoding="utf-8")
         (self.bundle / "SHA256SUMS").write_text(
-            "{}  {}\n".format(digest, self.wheel_name), encoding="ascii"
+            "{}  {}\n{}  {}\n".format(digest, self.wheel_name, helper_digest, self.helper_name),
+            encoding="ascii",
         )
 
     def write_fake_commands(self):
@@ -161,7 +168,8 @@ class DeployHelperTest(unittest.TestCase):
         self.wheel.write_bytes(b"tampered wheel")
         result = self.run_dry()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("wheel checksum mismatch", result.stderr)
+        self.assertIn("wheel", result.stderr)
+        self.assertIn("checksum mismatch", result.stderr)
 
     def test_manifest_sha_mismatch_rejected(self):
         self.write_bundle(manifest_sha="c" * 40)
@@ -231,6 +239,66 @@ class DeployHelperTest(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("--commit-sha", result.stderr)
+
+    def test_new_sha256_format_with_helper_passes(self):
+        result = self.run_dry()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_helper_checksum_missing_fails(self):
+        sums = "{}  {}\n".format(
+            hashlib.sha256(self.wheel.read_bytes()).hexdigest(), self.wheel_name
+        )
+        (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
+        result = self.run_dry()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("exactly 2 entries", result.stderr)
+
+    def test_duplicate_helper_in_sha256sums_fails(self):
+        digest = hashlib.sha256(self.wheel.read_bytes()).hexdigest()
+        helper_digest = hashlib.sha256(self.helper.read_bytes()).hexdigest()
+        sums = "{}  {}\n{}  {}\n{}  {}\n".format(
+            digest, self.wheel_name,
+            helper_digest, self.helper_name,
+            helper_digest, self.helper_name,
+        )
+        (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
+        result = self.run_dry()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicate", result.stderr)
+
+    def test_unknown_file_in_sha256sums_fails(self):
+        digest = hashlib.sha256(self.wheel.read_bytes()).hexdigest()
+        helper_digest = hashlib.sha256(self.helper.read_bytes()).hexdigest()
+        sums = "{}  {}\n{}  {}\nabc123  evil.txt\n".format(
+            digest, self.wheel_name,
+            helper_digest, self.helper_name,
+        )
+        (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
+        result = self.run_dry()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unexpected entry", result.stderr)
+
+    def test_wrong_helper_checksum_fails(self):
+        digest = hashlib.sha256(self.wheel.read_bytes()).hexdigest()
+        sums = "{}  {}\n{}  {}\n".format(
+            digest, self.wheel_name,
+            "a" * 64, self.helper_name,
+        )
+        (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
+        result = self.run_dry()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("helper", result.stderr)
+
+    def test_wrong_wheel_checksum_fails(self):
+        helper_digest = hashlib.sha256(self.helper.read_bytes()).hexdigest()
+        sums = "{}  {}\n{}  {}\n".format(
+            "b" * 64, self.wheel_name,
+            helper_digest, self.helper_name,
+        )
+        (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
+        result = self.run_dry()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("wheel", result.stderr)
 
 
 class DispatcherUploadTest(unittest.TestCase):
