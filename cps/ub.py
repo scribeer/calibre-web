@@ -773,7 +773,9 @@ def get_invite_list(_session, limit=20):
         creator_name = ''
         if inv.created_by_user_id:
             if inv.created_by_user_id not in user_cache:
-                user_cache[inv.created_by_user_id] = _session.query(User).get(inv.created_by_user_id)
+                user_cache[inv.created_by_user_id] = _session.query(User).filter(
+                    User.id == inv.created_by_user_id
+                ).first()
                 if not user_cache[inv.created_by_user_id]:
                     user_cache[inv.created_by_user_id] = None
             creator = user_cache[inv.created_by_user_id]

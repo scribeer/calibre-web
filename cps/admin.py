@@ -44,7 +44,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import IntegrityError, OperationalError, InvalidRequestError, ArgumentError
 from sqlalchemy.sql.expression import func, or_, text
 
-from . import constants, logger, helper, services, cli_param, themes
+from . import aubooks_permissions, constants, logger, helper, services, cli_param, themes
 from . import db, calibre_db, ub, web_server, config, updater_thread, gdriveutils, \
     kobo_sync_status, schedule
 from .helper import check_valid_domain, send_test_mail, reset_password, generate_password_hash, check_email, \
@@ -118,6 +118,42 @@ def _get_invite_list():
                   else _('Expired') if r['status'] == 'Expired'
                   else _('Revoked'),
     } for r in rows]
+
+
+def _render_admin(generated_invite_url=None):
+    version = updater_thread.get_current_version_info()
+    if version is False:
+        commit = _('Unknown')
+    elif 'datetime' in version:
+        commit = version['datetime']
+        tz = timedelta(seconds=time.timezone if (time.localtime().tm_isdst == 0) else time.altzone)
+        form_date = datetime.strptime(commit[:19], "%Y-%m-%dT%H:%M:%S")
+        if len(commit) > 19:
+            if commit[19] == '+':
+                form_date -= timedelta(hours=int(commit[20:22]), minutes=int(commit[23:]))
+            elif commit[19] == '-':
+                form_date += timedelta(hours=int(commit[20:22]), minutes=int(commit[23:]))
+        commit = format_datetime(form_date - tz, format='short')
+    else:
+        commit = version['version'].replace("b", " Beta")
+
+    schedule_time = format_time(datetime_time(hour=config.schedule_start_time), format="short")
+    duration = timedelta(hours=config.schedule_duration // 60, minutes=config.schedule_duration % 60)
+    is_aubooks = aubooks_permissions.is_aubooks_active()
+    return render_title_template(
+        "admin.html",
+        allUser=ub.session.query(ub.User).all(),
+        config=config,
+        commit=commit,
+        feature_support=feature_support,
+        schedule_time=schedule_time,
+        schedule_duration=format_timedelta(duration, threshold=.99),
+        generated_invite_url=generated_invite_url,
+        invites=_get_invite_list() if is_aubooks else [],
+        is_aubooks=is_aubooks,
+        title=_("Admin page"),
+        page="admin",
+    )
 
 
 @admi.before_app_request
@@ -222,65 +258,19 @@ def update_thumbnails():
 @user_login_required
 @admin_required
 def admin():
-    version = updater_thread.get_current_version_info()
-    if version is False:
-        commit = _('Unknown')
-    else:
-        if 'datetime' in version:
-            commit = version['datetime']
-
-            tz = timedelta(seconds=time.timezone if (time.localtime().tm_isdst == 0) else time.altzone)
-            form_date = datetime.strptime(commit[:19], "%Y-%m-%dT%H:%M:%S")
-            if len(commit) > 19:  # check if string has timezone
-                if commit[19] == '+':
-                    form_date -= timedelta(hours=int(commit[20:22]), minutes=int(commit[23:]))
-                elif commit[19] == '-':
-                    form_date += timedelta(hours=int(commit[20:22]), minutes=int(commit[23:]))
-            commit = format_datetime(form_date - tz, format='short')
-        else:
-            commit = version['version'].replace("b", " Beta")
-
-    all_user = ub.session.query(ub.User).all()
-    # email_settings = mail_config.get_mail_settings()
-    schedule_time = format_time(datetime_time(hour=config.schedule_start_time), format="short")
-    t = timedelta(hours=config.schedule_duration // 60, minutes=config.schedule_duration % 60)
-    schedule_duration = format_timedelta(t, threshold=.99)
-
-    is_aubooks = config.config_theme == 3
-    invites = _get_invite_list() if is_aubooks else []
-
-    return render_title_template("admin.html", allUser=all_user, config=config, commit=commit,
-                                 feature_support=feature_support, schedule_time=schedule_time,
-                                 schedule_duration=schedule_duration,
-                                 invites=invites, is_aubooks=is_aubooks,
-                                 title=_("Admin page"), page="admin")
+    return _render_admin()
 
 
 @admi.route("/admin/registration-link", methods=["POST"])
 @user_login_required
 @admin_required
 def create_registration_link():
+    if not aubooks_permissions.is_aubooks_active():
+        abort(404)
     raw_token = ub.create_invite(ub.session, created_by_user_id=current_user.id)
     ub.session.commit()
     invite_url = '/register/{}'.format(raw_token)
-
-    all_user = ub.session.query(ub.User).all()
-    schedule_time = format_time(datetime_time(hour=config.schedule_start_time), format="short")
-    t = timedelta(hours=config.schedule_duration // 60, minutes=config.schedule_duration % 60)
-    schedule_duration = format_timedelta(t, threshold=.99)
-    is_aubooks = config.config_theme == 3
-
-    return render_title_template("admin.html",
-                                 allUser=all_user,
-                                 config=config,
-                                 commit=updater_thread.get_current_version_info(),
-                                 feature_support=feature_support,
-                                 schedule_time=schedule_time,
-                                 schedule_duration=schedule_duration,
-                                 generated_invite_url=invite_url,
-                                 is_aubooks=is_aubooks,
-                                 invites=_get_invite_list(),
-                                 title=_("Admin page"), page="admin")
+    return _render_admin(generated_invite_url=invite_url)
 
 
 @admi.route("/admin/dbconfig", methods=["GET", "POST"])

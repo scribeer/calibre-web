@@ -55,16 +55,16 @@
         <div style="margin-top: 10px;">
           <form method="POST" action="{{url_for('admin.create_registration_link')}}" style="display: inline;">
             <input type="hidden" name="csrf_token" value="{{csrf_token()}}">
-            <button type="submit" class="btn btn-default" id="create_invite">{{_('Create registration link')}}</button>
+            <button type="submit" class="btn btn-default" id="create_invite">Создать ссылку регистрации</button>
           </form>
         </div>
         {% if generated_invite_url %}
         <div style="margin-top: 10px;">
-          <label>{{_('Registration link:')}}</label>
+          <label for="invite_url">Ссылка регистрации:</label>
           <div class="input-group" style="max-width: 600px;">
             <input type="text" class="form-control" id="invite_url" value="{{generated_invite_url}}" readonly aria-label="{{_('Registration link')}}">
           </div>
-          <p class="help-block">{{_('Valid for 7 days and allows creating one account.')}}</p>
+          <p class="help-block">Действительна 7 дней и позволяет создать один аккаунт.</p>
         </div>
         {% endif %}
         {% if invites %}
