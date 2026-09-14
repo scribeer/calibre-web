@@ -16,6 +16,9 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+import os
+from threading import Lock
+
 from flask import g, abort, request, render_template
 from flask_themes2 import render_theme_template
 from jinja2 import TemplateNotFound
@@ -30,27 +33,39 @@ from .ub import User
 
 log = logger.create()
 
+_aubooks_sidebar_genre_cache = {"key": None, "tree": None}
+_aubooks_sidebar_genre_cache_lock = Lock()
+
 
 def get_active_theme_identifier():
     return themes.get_theme_identifier(config.config_theme, request.blueprint)
 
 
 def _get_aubooks_sidebar_genre_tree():
-    if hasattr(g, "aubooks_sidebar_genre_tree"):
-        return g.aubooks_sidebar_genre_tree
-
     from . import calibre_db, db
     from .aubooks_genres import MAPPED_TAG_NAMES, build_sidebar_genre_tree
 
-    tags = (calibre_db.session.query(db.Tags)
-            .join(db.books_tags_link, db.books_tags_link.c.tag == db.Tags.id)
-            .join(db.Books, db.Books.id == db.books_tags_link.c.book)
-            .filter(db.Tags.name.in_(MAPPED_TAG_NAMES))
-            .filter(calibre_db.common_filters())
-            .group_by(db.Tags.id)
-            .all())
-    g.aubooks_sidebar_genre_tree = build_sidebar_genre_tree(tags)
-    return g.aubooks_sidebar_genre_tree
+    try:
+        metadata_db = os.path.join(config.get_book_path(), "metadata.db")
+        cache_key = (metadata_db, os.stat(metadata_db).st_mtime_ns)
+    except (OSError, TypeError):
+        cache_key = None
+
+    with _aubooks_sidebar_genre_cache_lock:
+        if cache_key is not None and _aubooks_sidebar_genre_cache["key"] == cache_key:
+            return _aubooks_sidebar_genre_cache["tree"]
+
+        tags = (calibre_db.session.query(db.Tags)
+                .join(db.books_tags_link, db.books_tags_link.c.tag == db.Tags.id)
+                .join(db.Books, db.Books.id == db.books_tags_link.c.book)
+                .filter(db.Tags.name.in_(MAPPED_TAG_NAMES))
+                .filter(calibre_db.common_filters())
+                .group_by(db.Tags.id)
+                .all())
+        tree = build_sidebar_genre_tree(tags)
+        if cache_key is not None:
+            _aubooks_sidebar_genre_cache.update(key=cache_key, tree=tree)
+        return tree
 
 
 def themed_render(template_name, **kwargs):
@@ -147,7 +162,8 @@ def get_sidebar_config(kwargs=None):
 def render_title_template(*args, **kwargs):
     sidebar, simple = get_sidebar_config(kwargs)
     if (get_active_theme_identifier() == "aubooks"
-            and (current_user.is_authenticated or g.allow_anonymous)):
+            and (current_user.is_authenticated or g.allow_anonymous)
+            and args[0] != "login.html"):
         if "aubooks_sidebar_genre_tree" not in kwargs:
             kwargs["aubooks_sidebar_genre_tree"] = _get_aubooks_sidebar_genre_tree()
         active_genre = kwargs.get("aubooks_genre") or {}
