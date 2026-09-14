@@ -1220,15 +1220,17 @@ def category_list():
         else:
             order = db.Tags.name.asc()
             order_no = 1
-        entries = calibre_db.session.query(db.Tags, func.count('books_tags_link.book').label('count')) \
-            .join(db.books_tags_link).join(db.Books).order_by(order).filter(calibre_db.common_filters()) \
-            .group_by(db.Tags.id).all()
+        category_entries = (calibre_db.session.query(db.Tags, func.count(db.Books.id).label('count'))
+                            .select_from(db.Books)
+                            .outerjoin(db.books_tags_link, db.Books.id == db.books_tags_link.c.book)
+                            .outerjoin(db.Tags, db.Tags.id == db.books_tags_link.c.tag)
+                            .filter(calibre_db.common_filters())
+                            .group_by(db.Tags.id)
+                            .order_by(order)
+                            .all())
+        entries = [entry for entry in category_entries if entry[0] is not None]
         real_tag_entries = list(entries)
-        no_tag_count = (calibre_db.session.query(db.Books)
-                         .outerjoin(db.books_tags_link).outerjoin(db.Tags)
-                        .filter(db.Tags.name == None)
-                         .filter(calibre_db.common_filters())
-                         .count())
+        no_tag_count = next((entry[1] for entry in category_entries if entry[0] is None), 0)
         if no_tag_count:
             entries.append([db.Category(_("None"), "-1"), no_tag_count])
         entries = sorted(entries, key=lambda x: x[0].name.lower(), reverse=not order_no)
