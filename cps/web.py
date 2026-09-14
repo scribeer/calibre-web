@@ -435,7 +435,8 @@ def render_books_list(data, sort_param, book_id, page, text_catalog=False):
                                                                 db.books_series_link,
                                                                 db.Books.id == db.books_series_link.c.book,
                                                                 db.Series,
-                                                                load_comments=text_catalog)
+                                                                load_comments=text_catalog,
+                                                                load_card_relations=text_catalog)
         return render_title_template('index.html', random=random, entries=entries, pagination=pagination,
                                      title=_("Books"), page=website, order=order[1],
                                      show_annotations=text_catalog)

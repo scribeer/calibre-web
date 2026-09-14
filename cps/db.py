@@ -857,13 +857,16 @@ class CalibreDB:
 
     # Fill indexpage with all requested data from database
     def fill_indexpage(self, page, pagesize, database, db_filter, order,
-                       join_archive_read=False, config_read_column=0, *join, load_comments=False):
+                       join_archive_read=False, config_read_column=0, *join, load_comments=False,
+                       load_card_relations=False):
         return self.fill_indexpage_with_archived_books(page, database, pagesize, db_filter, order, False,
                                                        join_archive_read, config_read_column, *join,
-                                                       load_comments=load_comments)
+                                                       load_comments=load_comments,
+                                                       load_card_relations=load_card_relations)
 
     def fill_indexpage_with_archived_books(self, page, database, pagesize, db_filter, order, allow_show_archived,
-                                           join_archive_read, config_read_column, *join, load_comments=False):
+                                            join_archive_read, config_read_column, *join, load_comments=False,
+                                            load_card_relations=False):
         pagesize = pagesize or self.config.config_books_per_page
         if current_user.show_detail_random():
             random_query = self.generate_linked_query(config_read_column, database)
@@ -880,6 +883,13 @@ class CalibreDB:
             query = self.session.query(database)
         if load_comments:
             query = query.options(selectinload(Books.comments))
+        if load_card_relations:
+            query = query.options(
+                selectinload(Books.authors),
+                selectinload(Books.series),
+                selectinload(Books.ratings),
+                selectinload(Books.data),
+            )
         off = int(int(pagesize) * (page - 1))
 
         indx = len(join)
