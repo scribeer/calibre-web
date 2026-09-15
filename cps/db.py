@@ -20,6 +20,7 @@
 import os
 import re
 import json
+import unicodedata
 from datetime import datetime, timezone
 from urllib.parse import quote
 import unidecode
@@ -55,6 +56,27 @@ log = logger.create()
 
 cc_exceptions = ['composite', 'series']
 cc_classes = {}
+
+AUBOOKS_FTS_SCHEMA_VERSION = 1
+AUBOOKS_FTS_PROBE_SQL = (
+    "SELECT schema_version FROM calibre.aubooks_fts_schema "
+    "WHERE singleton = 1 AND schema_version = :schema_version "
+    "AND EXISTS (SELECT 1 FROM calibre.sqlite_master "
+    "WHERE type = 'table' AND name = 'books_fts')"
+)
+AUBOOKS_FTS_MATCH_PROBE_SQL = (
+    "SELECT 1 FROM calibre.books_fts WHERE books_fts MATCH :term LIMIT 1"
+)
+AUBOOKS_FTS_FILTER_SQL = (
+    "books.id IN (SELECT rowid FROM calibre.books_fts "
+    "WHERE books_fts MATCH :fts_term)"
+)
+
+
+def normalize_fts_query(term):
+    normalized = unicodedata.normalize("NFC", strip_whitespaces(term))
+    normalized = re.sub(r"\s+", " ", normalized).lower()
+    return '"{}"'.format(normalized.replace('"', '""'))
 
 Base = declarative_base()
 
@@ -555,6 +577,7 @@ class CalibreDB:
         """ Initialize a new CalibreDB session
         """
         self.Session = None
+        self._fts_available = None
         #if init:
         #    self.init_db(expire_on_commit)
         if _app is not None and not _app._got_first_request:
@@ -984,34 +1007,31 @@ class CalibreDB:
             .filter(and_(Books.authors.any(and_(*q)), func.lower(Books.title).ilike("%" + title + "%"))).first()
 
     def search_query(self, term, config, *join):
-        term = strip_whitespaces(term).lower()
+        term = strip_whitespaces(term)
+        fts_term = normalize_fts_query(term)
+        term = term.lower()
         self.create_functions()
 
-        # Try FTS5 search first for better performance
-        fts_ids = None
-        # Check if FTS5 table exists before attempting search
-        if not hasattr(self, '_fts_available'):
+        fts_query_valid = False
+        fts_has_match = False
+        if self._fts_available is None:
             try:
                 result = self.session.execute(
-                    text("SELECT name FROM sqlite_master WHERE type='table' AND name='books_fts'")
+                    text(AUBOOKS_FTS_PROBE_SQL),
+                    {"schema_version": AUBOOKS_FTS_SCHEMA_VERSION}
                 ).fetchone()
                 self._fts_available = result is not None
-            except Exception:
+            except (OperationalError, sqliteOperationalError):
                 self._fts_available = False
 
         if self._fts_available:
             try:
-                # Escape FTS5 special characters to prevent query errors
-                term_fts = term.replace('"', '""')
-                # Wrap in quotes for phrase matching and better accuracy
-                fts_results = self.session.execute(
-                    text("SELECT DISTINCT rowid FROM books_fts WHERE books_fts MATCH :term"),
-                    {"term": f'"{term_fts}"'}
-                ).fetchall()
-                if fts_results:
-                    fts_ids = [r[0] for r in fts_results]
-            except Exception as ex:
-                # FTS5 query failed, fall back to traditional search
+                fts_has_match = self.session.execute(
+                    text(AUBOOKS_FTS_MATCH_PROBE_SQL),
+                    {"term": fts_term}
+                ).fetchone() is not None
+                fts_query_valid = True
+            except (OperationalError, sqliteOperationalError) as ex:
                 log.debug("FTS5 search failed for term '{}', using fallback: {}".format(term, ex))
 
         # Build base query with optimized joins
@@ -1030,9 +1050,12 @@ class CalibreDB:
         elif len(join) == 1:
             base_query = base_query.outerjoin(join[0])
 
-        # If FTS5 found results, use those IDs
-        if fts_ids:
-            return base_query.filter(Books.id.in_(fts_ids))
+        if fts_query_valid:
+            if not fts_has_match:
+                return base_query.filter(false())
+            return base_query.filter(
+                text(AUBOOKS_FTS_FILTER_SQL).bindparams(fts_term=fts_term)
+            )
 
         # Fallback to traditional search with optimized subqueries
         author_terms = re.split("[, ]+", term)
@@ -1189,6 +1212,7 @@ class CalibreDB:
     def reconnect_db(self, config, app_db_path):
         # self.dispose()
         # self.engine.dispose()
+        self._fts_available = None
         self.setup_db(config.config_calibre_dir, app_db_path)
         self.update_config(config, config.config_calibre_dir, app_db_path)
 

@@ -1,7 +1,7 @@
 # Производительность поиска в AU-Books
 
 ## Статус
-Будущая задача. Реализация НЕ начата.
+Реализовано и проверено в изолированном DEV candidate. Production deployment НЕ выполнен; задача остаётся открытой до отдельного безопасного deploy на VPS2.
 
 ## Приоритет
 Высокий — performance bug.
@@ -52,6 +52,7 @@
 - `metadata.db` — таблицы и indexes Calibre.
 
 ## Риски
-- Добавление indexes в metadata.db невозможно без миграции Calibre.
+- AU-Books FTS не добавляется в canonical Calibre `metadata.db`: индекс строится только в приватном export artifact.
 - Изменения в upstream search code усложняют будущие обновления.
-- Оптимизация может затронуть релевантность результатов.
+- FTS token/phrase semantics не поддерживает произвольный substring по середине слова как legacy `%term%`.
+- VPS2 продолжает использовать legacy search до отдельного production deployment consumer-кода и FTS metadata artifact.
