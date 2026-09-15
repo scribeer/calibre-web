@@ -56,6 +56,28 @@ class TestGuestAuthorAccess(unittest.TestCase):
             "author_list should use SQL LIMIT for server-side pagination",
         )
 
+    def test_author_list_uses_server_side_char_filter(self):
+        src = read_web_source()
+        import re
+        match = re.search(
+            r'def author_list\(\):(.*?)(?=\n@web\.route|\ndef [a-z])',
+            src, re.DOTALL,
+        )
+        self.assertIsNotNone(match, "author_list function not found")
+        body = match.group(1)
+        # Should read char query parameter
+        self.assertIn(
+            "request.args.get('char'",
+            body,
+            "author_list should read char query parameter",
+        )
+        # Should apply char filter before LIMIT/OFFSET in SQL
+        self.assertIn(
+            "func.upper(func.substr(db.Authors.sort, 1, 1))",
+            body,
+            "author_list should filter authors by first character server-side",
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

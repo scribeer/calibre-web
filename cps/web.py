@@ -1046,10 +1046,24 @@ def author_list():
     if page < 1:
         page = 1
 
+    # Optional server-side alphabet filter. Matches the logic used by
+    # query_char_list() (first character of Authors.sort, uppercased).
+    char_param = request.args.get('char', '').strip()
+    if char_param:
+        char_param = char_param[0].upper()
+    else:
+        char_param = None
+
+    # Apply common Calibre-Web filters and optional char filter.
+    list_filter = calibre_db.common_filters()
+    if char_param:
+        list_filter = and_(list_filter,
+                           func.upper(func.substr(db.Authors.sort, 1, 1)) == char_param)
+
     # Efficient total count for pagination, without loading all authors.
     total = calibre_db.session.query(func.count(func.distinct(db.Authors.id))) \
         .select_from(db.Authors).join(db.books_authors_link).join(db.Books) \
-        .filter(calibre_db.common_filters()).scalar() or 0
+        .filter(list_filter).scalar() or 0
 
     pagination = Pagination(page, per_page, total)
     if total and pagination.page > pagination.pages:
@@ -1058,7 +1072,7 @@ def author_list():
 
     offset = (page - 1) * per_page
     entries = calibre_db.session.query(db.Authors, func.count('books_authors_link.book').label('count')) \
-        .join(db.books_authors_link).join(db.Books).filter(calibre_db.common_filters()) \
+        .join(db.books_authors_link).join(db.Books).filter(list_filter) \
         .group_by(text('books_authors_link.author')).order_by(order, db.Authors.id) \
         .offset(offset).limit(per_page).all()
     char_list = query_char_list(db.Authors.sort, db.books_authors_link)
@@ -1069,7 +1083,7 @@ def author_list():
         entry.Authors.name = entry.Authors.name.replace('|', ',')
     return render_title_template('list.html', entries=author_copy, folder='web.books_list', charlist=char_list,
                                  title="Authors", page="authorlist", data='author', order=order_no,
-                                 pagination=pagination)
+                                 pagination=pagination, char=char_param)
 
 
 @web.route("/downloadlist")

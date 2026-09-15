@@ -30,10 +30,17 @@
   {% if entries|length and data == 'author' %}<button type="button" id="sort_name" class="btn btn-primary" aria-pressed="false"><b>B,A &harr; A B</b></button>{% endif %}
   <button type="button" id="asc" data-order="{{order}}" data-id="{{data}}" class="btn btn-primary{% if order == 1 %} active{% endif %}" aria-pressed="{{'true' if order == 1 else 'false'}}" aria-label="{{_('Sort title in alphabetical order')}}"><span class="glyphicon glyphicon-sort-by-alphabet" aria-hidden="true"></span></button>
   <button type="button" id="desc" data-id="{{data}}" class="btn btn-primary{% if order == 0 %} active{% endif %}" aria-pressed="{{'true' if order == 0 else 'false'}}" aria-label="{{_('Sort title in reverse alphabetical order')}}"><span class="glyphicon glyphicon-sort-by-alphabet-alt" aria-hidden="true"></span></button>
+  {% if data == 'author' %}
+  {% if charlist|length %}<a href="{{url_for('web.author_list')}}" id="all" class="{% if not char %}active {% endif %}btn btn-primary" role="button" aria-pressed="{{'true' if not char else 'false'}}">{{_('All')}}</a>{% endif %}
+  <div class="btn-group aubooks-char-group" role="group" aria-label="{{_('Filter by letter')}}">
+    {% for ch in charlist %}<a href="{{url_for('web.author_list', char=ch[0])}}" class="{% if char == ch[0] %}active {% endif %}btn btn-primary aubooks-char-link" role="button" aria-pressed="{{'true' if char == ch[0] else 'false'}}" aria-label="{{_('Authors starting with %(char)s', char=ch[0])}}">{{ch[0]}}</a>{% endfor %}
+  </div>
+  {% else %}
   {% if charlist|length %}<button type="button" id="all" class="active btn btn-primary" aria-pressed="true">{{_('All')}}</button>{% endif %}
   <div class="btn-group character" role="group" aria-label="{{_('All')}}">
     {% for char in charlist %}<button type="button" class="btn btn-primary char" aria-pressed="false">{{char[0]}}</button>{% endfor %}
   </div>
+  {% endif %}
   {% if data == 'series' %}<button type="button" class="update-view btn btn-primary" data-target="series_view" id="grid-button" data-view="grid">{{_('Grid')}}</button>{% endif %}
 </div>
 <div class="container1 aubooks-directory-list">
@@ -53,17 +60,17 @@
 <nav class="aubooks-pagination" aria-label="{{_('Page navigation')}}">
   <ul class="pager">
     <li class="previous{% if not pagination.has_prev %} disabled{% endif %}">
-      {% if pagination.has_prev %}<a href="{{url_for('web.author_list', page=pagination.page - 1)}}" aria-label="{{_('Previous page')}}">{% else %}<span>{% endif %}<span aria-hidden="true">&larr;</span> {{_("Предыдущая")}}{% if pagination.has_prev %}</a>{% else %}</span>{% endif %}
+      {% if pagination.has_prev %}<a href="{{url_for('web.author_list', page=pagination.page - 1, char=char)}}" aria-label="{{_('Previous page')}}">{% else %}<span>{% endif %}<span aria-hidden="true">&larr;</span> {{_("Предыдущая")}}{% if pagination.has_prev %}</a>{% else %}</span>{% endif %}
     </li>
     <li class="aubooks-page-info" aria-label="{{_('Page %(page)s of %(pages)s', page=pagination.page, pages=pagination.pages)}}">
       {{_("Страница %(page)s из %(pages)s", page=pagination.page, pages=pagination.pages)}}
     </li>
     <li class="next{% if not pagination.has_next %} disabled{% endif %}">
-      {% if pagination.has_next %}<a href="{{url_for('web.author_list', page=pagination.page + 1)}}" aria-label="{{_('Next page')}}">{% else %}<span>{% endif %}{{_("Следующая")}} <span aria-hidden="true">&rarr;</span>{% if pagination.has_next %}</a>{% else %}</span>{% endif %}
+      {% if pagination.has_next %}<a href="{{url_for('web.author_list', page=pagination.page + 1, char=char)}}" aria-label="{{_('Next page')}}">{% else %}<span>{% endif %}{{_("Следующая")}} <span aria-hidden="true">&rarr;</span>{% if pagination.has_next %}</a>{% else %}</span>{% endif %}
     </li>
   </ul>
 </nav>
 {% endif %}
 {% endif %}
 {% endblock %}
-{% block js %}{% if not (data == 'category' and aubooks_genre_tree is not none) %}<script src="{{url_for('static', filename='js/filter_list.js')}}"></script>{% endif %}{% endblock %}
+{% block js %}{% if not (data == 'category' and aubooks_genre_tree is not none) and not (data == 'author' and pagination) %}<script src="{{url_for('static', filename='js/filter_list.js')}}"></script>{% endif %}{% endblock %}
