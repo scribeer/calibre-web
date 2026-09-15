@@ -61,11 +61,51 @@
         {% if generated_invite_url %}
         <div style="margin-top: 10px;">
           <label for="invite_url">Ссылка регистрации:</label>
-          <div class="input-group" style="max-width: 600px;">
+          <div class="input-group" style="max-width: 100%;">
             <input type="text" class="form-control" id="invite_url" value="{{generated_invite_url}}" readonly aria-label="{{_('Registration link')}}">
+            <span class="input-group-btn">
+              <button type="button" class="btn btn-default" id="copy_invite_url" aria-label="{{_('Copy registration link')}}">Копировать</button>
+            </span>
           </div>
-          <p class="help-block">Действительна 7 дней и позволяет создать один аккаунт.</p>
+          <p class="help-block" id="invite_copy_feedback" aria-live="polite" aria-atomic="true">Действительна 7 дней и позволяет создать один аккаунт.</p>
         </div>
+        <script>
+        (function(){
+          var btn = document.getElementById('copy_invite_url');
+          var input = document.getElementById('invite_url');
+          var feedback = document.getElementById('invite_copy_feedback');
+          var originalText = feedback.textContent;
+          if (btn && input && feedback) {
+            btn.addEventListener('click', function(){
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(input.value).then(function(){
+                  feedback.textContent = 'Скопировано';
+                  setTimeout(function(){ feedback.textContent = originalText; }, 2000);
+                }).catch(function(){
+                  fallbackCopy();
+                });
+              } else {
+                fallbackCopy();
+              }
+              function fallbackCopy(){
+                input.select();
+                input.setSelectionRange(0, 99999);
+                var ok = false;
+                try {
+                  document.execCommand('copy');
+                  ok = true;
+                } catch(e) {}
+                if (ok) {
+                  feedback.textContent = 'Скопировано';
+                  setTimeout(function(){ feedback.textContent = originalText; }, 2000);
+                } else {
+                  feedback.textContent = 'Не удалось скопировать';
+                }
+              }
+            });
+          }
+        })();
+        </script>
         {% endif %}
         {% if invites %}
         <div style="margin-top: 15px;">

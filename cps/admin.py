@@ -269,7 +269,7 @@ def create_registration_link():
         abort(404)
     raw_token = ub.create_invite(ub.session, created_by_user_id=current_user.id)
     ub.session.commit()
-    invite_url = '/register/{}'.format(raw_token)
+    invite_url = url_for('web.register_invite', token=raw_token, _external=True)
     return _render_admin(generated_invite_url=invite_url)
 
 

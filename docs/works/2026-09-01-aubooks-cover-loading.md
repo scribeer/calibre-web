@@ -73,5 +73,13 @@
 ## О/OpenDrive
 OpenDrive интеграция отсутствует в кодовой базе Calibre-Web. Единственный remote storage — Google Drive через pydrive2. Cover загружаются из локальной Calibre library через `/cover/<id>/og`.
 
+## Принятое решение (2026-09-15)
+
+- AU-Books не использует обложки книг в каталоге и на detail-странице.
+- OpenDrive cover proxy не переносится на production VPS2.
+- Generic cover не показывается.
+- Текстовая компоновка карточек AU-Books сохраняется.
+- Detail-страница остаётся без cover; существующий `<div class="cover">` в `detail.html` будет удалён отдельным коммитом.
+
 ## Commit
 `4e7e12d1 Make AU-Books catalog text-first`
