@@ -76,6 +76,10 @@ AUBOOKS_FTS_FILTER_SQL = (
 def normalize_fts_query(term):
     normalized = unicodedata.normalize("NFC", strip_whitespaces(term))
     normalized = re.sub(r"\s+", " ", normalized).lower()
+    normalized = re.sub(r"[^\w\s]", "", normalized, flags=re.UNICODE)
+    normalized = strip_whitespaces(normalized)
+    if not normalized:
+        return ""
     return '"{}"'.format(normalized.replace('"', '""'))
 
 Base = declarative_base()
@@ -1008,10 +1012,10 @@ class CalibreDB:
 
     def search_query(self, term, config, *join):
         term = strip_whitespaces(term)
-        fts_term = normalize_fts_query(term)
-        term = term.lower()
+        term_lower = term.lower()
         self.create_functions()
 
+        fts_term = normalize_fts_query(term)
         fts_query_valid = False
         fts_has_match = False
         if self._fts_available is None:
@@ -1024,7 +1028,7 @@ class CalibreDB:
             except (OperationalError, sqliteOperationalError):
                 self._fts_available = False
 
-        if self._fts_available:
+        if self._fts_available and fts_term:
             try:
                 fts_has_match = self.session.execute(
                     text(AUBOOKS_FTS_MATCH_PROBE_SQL),
@@ -1032,7 +1036,7 @@ class CalibreDB:
                 ).fetchone() is not None
                 fts_query_valid = True
             except (OperationalError, sqliteOperationalError) as ex:
-                log.debug("FTS5 search failed for term '{}', using fallback: {}".format(term, ex))
+                log.debug("FTS5 search failed for term '{}', using fallback: {}".format(term_lower, ex))
 
         # Build base query with optimized joins
         base_query = self.generate_linked_query(config.config_read_column, Books)
@@ -1058,7 +1062,7 @@ class CalibreDB:
             )
 
         # Fallback to traditional search with optimized subqueries
-        author_terms = re.split("[, ]+", term)
+        author_terms = re.split("[, ]+", term_lower)
 
         # Use subquery for authors to avoid expensive .any() with OR
         author_subquery = self.session.query(books_authors_link.c.book).join(
@@ -1075,15 +1079,15 @@ class CalibreDB:
         filter_expression = [
             Books.id.in_(self.session.query(books_tags_link.c.book).join(
                 Tags, books_tags_link.c.tag == Tags.id
-            ).filter(func.lower(Tags.name).ilike("%" + term + "%"))),
+            ).filter(func.lower(Tags.name).ilike("%" + term_lower + "%"))),
             Books.id.in_(self.session.query(books_series_link.c.book).join(
                 Series, books_series_link.c.series == Series.id
-            ).filter(func.lower(Series.name).ilike("%" + term + "%"))),
+            ).filter(func.lower(Series.name).ilike("%" + term_lower + "%"))),
             Books.id.in_(author_subquery),
             Books.id.in_(self.session.query(books_publishers_link.c.book).join(
                 Publishers, books_publishers_link.c.publisher == Publishers.id
-            ).filter(func.lower(Publishers.name).ilike("%" + term + "%"))),
-            func.lower(Books.title).ilike("%" + term + "%")
+            ).filter(func.lower(Publishers.name).ilike("%" + term_lower + "%"))),
+            func.lower(Books.title).ilike("%" + term_lower + "%")
         ]
 
         for c in cc:
@@ -1091,7 +1095,7 @@ class CalibreDB:
                 filter_expression.append(
                     getattr(Books,
                             'custom_column_' + str(c.id)).any(
-                        func.lower(cc_classes[c.id].value).ilike("%" + term + "%")))
+                        func.lower(cc_classes[c.id].value).ilike("%" + term_lower + "%")))
 
         return base_query.filter(or_(*filter_expression))
 

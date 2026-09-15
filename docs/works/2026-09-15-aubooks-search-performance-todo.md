@@ -1,7 +1,8 @@
 # Производительность поиска в AU-Books
 
 ## Статус
-Реализовано и проверено в изолированном DEV candidate. Production deployment НЕ выполнен; задача остаётся открытой до отдельного безопасного deploy на VPS2.
+IMPLEMENTED IN DEV
+PRODUCTION: PENDING
 
 ## Приоритет
 Высокий — performance bug.

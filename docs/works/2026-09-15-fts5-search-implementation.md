@@ -15,18 +15,20 @@
 - FTS filter выполняется SQL-подзапросом по `books.id`; `.fetchall()` и Python-список всех rowid удалены.
 - Нулевой валидный FTS result считается окончательным и больше не запускает медленный legacy fallback.
 - Fallback сохранён только для отсутствующего/неподдерживаемого artifact и ожидаемой SQLite/SQLAlchemy operational error.
-- Query нормализуется через NFC, whitespace collapse, lower case и безопасную FTS phrase quoting.
+- Query нормализуется через NFC, whitespace collapse, lower case и безопасную FTS phrase quoting; punctuation-only и пустые запросы автоматически переходят на legacy fallback, чтобы не генерировать malformed MATCH.
 - Кеш доступности FTS сбрасывается при `reconnect_db()`.
 ## Проверки
-- `.venv/bin/python -m pytest tests/test_books_fts.py -q`: 8 passed.
+- `.venv/bin/python -m pytest tests/test_books_fts.py -q`: 9 passed.
 - HTTP на обычной DEV `metadata.db` без FTS после restart: 200, legacy fallback сохранился.
-- Изолированный HTTP test с реальным FTS candidate: все 5 representative queries вернули 200; median 0.058197 s против прежних 9.965398 s, приблизительно 171x быстрее.
+- Изолированный HTTP test с реальным FTS candidate после аудита: все 5 representative queries вернули 200; median 0.060147 s против прежних 9.965398 s, приблизительно 166x быстрее. Counts: exact title 1, part title 1, author 1, rare word 6, no results 0. No-result запросы быстрые (~0.05 s), legacy fallback не срабатывает.
 - Полный `.venv/bin/python -m pytest tests -q`: 602 passed, 44 failed. Все 44 сбоя находятся вне FTS-кода: deploy helper, invite routes и TTS shell extraction; FTS tests проходят.
 - `git diff --check`: ошибок нет.
+- `cps/search.py` не содержит изменений (whitespace/instrumentation residue отсутствует).
 ## Известные ограничения
 - Production VPS2 не изменялась и продолжает использовать legacy search.
 - Phrase/token FTS не эквивалентен произвольному substring по середине слова.
 - Существующий pagination path запрашивает `offset + page_size + 1` строк и затем делает slice в Python; множество совпадений ограничивается SQL до этого этапа, но pagination отдельно не переписывалась.
 - Рабочая DEV `metadata.db` не изменялась; FTS проверялся на отдельном candidate.
 ## Commit
-`bf01965d` — `feat(aubooks): use versioned FTS5 search`.
+- `bf01965d` — `feat(aubooks): use versioned FTS5 search`.
+- Последующий fixup-коммит с аудитом и исправлениями будет создан отдельно.

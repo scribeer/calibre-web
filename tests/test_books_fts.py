@@ -92,9 +92,16 @@ class BooksFtsConsumerTest(unittest.TestCase):
     def test_query_normalization(self):
         self.assertEqual(
             db.normalize_fts_query("  МАРАКХ.\t  Испытание  "),
-            '"маракх. испытание"',
+            '"маракх испытание"',
         )
-        self.assertEqual(db.normalize_fts_query("A \"quote\""), '"a ""quote"""')
+        self.assertEqual(db.normalize_fts_query("A \"quote\""), '"a quote"')
+        self.assertEqual(db.normalize_fts_query("!@#"), "")
+
+    def test_punctuation_only_query_falls_back_without_fts(self):
+        subject, query = _subject([MagicMock(fetchone=MagicMock(return_value=(1,)))])
+        result = db.CalibreDB.search_query(subject, "!@#", SimpleNamespace(config_read_column=0))
+        self.assertIs(result, query)
+        self.assertTrue(subject.session.query.called)
 
     def test_pagination_limits_the_sql_filtered_query(self):
         subject = MagicMock()
