@@ -52,6 +52,21 @@
     {% endfor %}
     </div>
   </div>
+{% if pagination %}
+<nav aria-label="{{_('Page navigation')}}">
+  <ul class="pager">
+    <li class="previous{% if not pagination.has_prev %} disabled{% endif %}">
+      {% if pagination.has_prev %}<a href="{{url_for('web.author_list', page=pagination.page - 1)}}" aria-label="{{_('Previous page')}}">{% else %}<span>{% endif %}<span aria-hidden="true">&larr;</span> {{_("Previous")}}{% if pagination.has_prev %}</a>{% else %}</span>{% endif %}
+    </li>
+    <li class="page-info" aria-label="{{_('Page %(page)s of %(pages)s', page=pagination.page, pages=pagination.pages)}}">
+      {{_("Page %(page)s of %(pages)s", page=pagination.page, pages=pagination.pages)}}
+    </li>
+    <li class="next{% if not pagination.has_next %} disabled{% endif %}">
+      {% if pagination.has_next %}<a href="{{url_for('web.author_list', page=pagination.page + 1)}}" aria-label="{{_('Next page')}}">{% else %}<span>{% endif %}{{_("Next")}} <span aria-hidden="true">&rarr;</span>{% if pagination.has_next %}</a>{% else %}</span>{% endif %}
+    </li>
+  </ul>
+</nav>
+{% endif %}
 {% endblock %}
 {% block js %}
 <script src="{{ url_for('static', filename='js/filter_list.js') }}"></script>

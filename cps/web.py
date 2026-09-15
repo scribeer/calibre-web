@@ -1025,26 +1025,51 @@ def update_table_settings():
 @web.route("/author")
 @login_required_if_no_ano
 def author_list():
-    if current_user.check_visibility(constants.SIDEBAR_AUTHOR):
-        if current_user.get_view_property('author', 'dir') == 'desc':
-            order = db.Authors.sort.desc()
-            order_no = 0
-        else:
-            order = db.Authors.sort.asc()
-            order_no = 1
-        entries = calibre_db.session.query(db.Authors, func.count('books_authors_link.book').label('count')) \
-            .join(db.books_authors_link).join(db.Books).filter(calibre_db.common_filters()) \
-            .group_by(text('books_authors_link.author')).order_by(order).all()
-        char_list = query_char_list(db.Authors.sort, db.books_authors_link)
-        # If not creating a copy, readonly databases can not display authornames with "|" in it as changing the name
-        # starts a change session
-        author_copy = copy.deepcopy(entries)
-        for entry in author_copy:
-            entry.Authors.name = entry.Authors.name.replace('|', ',')
-        return render_title_template('list.html', entries=author_copy, folder='web.books_list', charlist=char_list,
-                                     title="Authors", page="authorlist", data='author', order=order_no)
-    else:
+    # AU-Books public catalog: allow anonymous access to /author even if the
+    # Guest user does not have SIDEBAR_AUTHOR in sidebar_view, as long as
+    # anonymous browsing is enabled and the AU theme is active. The
+    # login_required_if_no_ano decorator already ensures anonymous users only
+    # reach this endpoint when anonymous browsing is enabled.
+    is_aubooks_public = is_aubooks_active() and current_user.is_anonymous
+    if not (current_user.check_visibility(constants.SIDEBAR_AUTHOR) or is_aubooks_public):
         abort(404)
+
+    if current_user.get_view_property('author', 'dir') == 'desc':
+        order = db.Authors.sort.desc()
+        order_no = 0
+    else:
+        order = db.Authors.sort.asc()
+        order_no = 1
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 100
+    if page < 1:
+        page = 1
+
+    # Efficient total count for pagination, without loading all authors.
+    total = calibre_db.session.query(func.count(func.distinct(db.Authors.id))) \
+        .select_from(db.Authors).join(db.books_authors_link).join(db.Books) \
+        .filter(calibre_db.common_filters()).scalar() or 0
+
+    pagination = Pagination(page, per_page, total)
+    if total and pagination.page > pagination.pages:
+        page = pagination.pages
+        pagination = Pagination(page, per_page, total)
+
+    offset = (page - 1) * per_page
+    entries = calibre_db.session.query(db.Authors, func.count('books_authors_link.book').label('count')) \
+        .join(db.books_authors_link).join(db.Books).filter(calibre_db.common_filters()) \
+        .group_by(text('books_authors_link.author')).order_by(order, db.Authors.id) \
+        .offset(offset).limit(per_page).all()
+    char_list = query_char_list(db.Authors.sort, db.books_authors_link)
+    # If not creating a copy, readonly databases can not display authornames with "|" in it as changing the name
+    # starts a change session
+    author_copy = copy.deepcopy(entries)
+    for entry in author_copy:
+        entry.Authors.name = entry.Authors.name.replace('|', ',')
+    return render_title_template('list.html', entries=author_copy, folder='web.books_list', charlist=char_list,
+                                 title="Authors", page="authorlist", data='author', order=order_no,
+                                 pagination=pagination)
 
 
 @web.route("/downloadlist")

@@ -31,5 +31,31 @@ class TestGuestCategoryAccess(unittest.TestCase):
         )
 
 
+class TestGuestAuthorAccess(unittest.TestCase):
+    """Verify anonymous users can access /author catalog without 404."""
+
+    def test_author_list_allows_anonymous(self):
+        src = read_web_source()
+        import re
+        match = re.search(
+            r'def author_list\(\):(.*?)(?=\n@web\.route|\ndef [a-z])',
+            src, re.DOTALL,
+        )
+        self.assertIsNotNone(match, "author_list function not found")
+        body = match.group(1)
+        # Should allow anonymous users when AU-Books theme is active
+        self.assertIn(
+            "current_user.is_anonymous",
+            body,
+            "author_list should allow anonymous users via is_anonymous check",
+        )
+        # Should use server-side pagination instead of loading all authors
+        self.assertIn(
+            ".limit(per_page)",
+            body,
+            "author_list should use SQL LIMIT for server-side pagination",
+        )
+
+
 if __name__ == '__main__':
     unittest.main()
