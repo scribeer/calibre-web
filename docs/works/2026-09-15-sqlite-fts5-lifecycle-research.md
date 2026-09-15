@@ -184,6 +184,6 @@ Counts совпали с предыдущей диагностикой для в
 - Полный application HTTP path с FTS не тестировался, поскольку текущий probe требует code fix, а задача запрещает реализацию.
 - Оценка build получена на DEV-копии и может отличаться на VPS2.
 ## Commit
-Будет указан после создания commit отчёта.
+`5aeb087b` — `docs(works): research SQLite FTS5 lifecycle`.
 ## Production
 Production VPS2 не затронут. Рабочая DEV `metadata.db` не изменялась.
