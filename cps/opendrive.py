@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
 
-"""OpenDrive cover proxy for AU-Books.
+"""OpenDrive cover fetcher for AU-Books.
 
-Fetches covers from a local rclone HTTP proxy that serves the
-OpenDrive calibre-books-v2 directory. Credentials stay in rclone
-config and are never exposed to the browser.
+Downloads covers directly from OpenDrive via rclone copyto.
+Credentials stay in rclone config and are never exposed to the browser.
 
 Cover path on OpenDrive: calibre-books-v2/<bucket>/<book_id>.jpg
 where bucket = 1 if book_id < 100 else (book_id // 100) * 100
-Local proxy: http://127.0.0.1:19876/<bucket>/<book_id>.jpg
 """
 
 import logging
@@ -16,16 +14,14 @@ import os
 import subprocess
 import tempfile
 import time
-import urllib.error
-import urllib.request
 
 log = logging.getLogger(__name__)
 
-PROXY_BASE_URL = "http://127.0.0.1:19876"
-TIMEOUT_SECONDS = 10
+RCLONE_REMOTE = "opendrive_content"
 CACHE_MAX_ENTRIES = 200
 CACHE_TTL_SECONDS = 3600
 DEFAULT_REMOTE_ROOT = "calibre-books-v2"
+RCLONE_TIMEOUT_SECONDS = 15
 
 _cover_cache = {}
 
@@ -33,7 +29,15 @@ _cover_cache = {}
 def _opendrive_cover_path(book_id):
     """Compute correct OpenDrive cover path with bucket."""
     bucket = 1 if book_id < 100 else (book_id // 100) * 100
-    return f"{bucket}/{book_id}.jpg"
+    return f"{DEFAULT_REMOTE_ROOT}/{bucket}/{book_id}.jpg"
+
+
+def _rclone_env():
+    env = os.environ.copy()
+    rclone_conf = os.environ.get("RCLONE_CONFIG")
+    if rclone_conf:
+        env["RCLONE_CONFIG"] = rclone_conf
+    return env
 
 
 def fetch_cover_from_opendrive(book_id):
@@ -41,14 +45,41 @@ def fetch_cover_from_opendrive(book_id):
     if cached and (time.time() - cached["ts"]) < CACHE_TTL_SECONDS:
         return cached["data"], cached["content_type"]
 
-    cover_url = "{}/{}".format(PROXY_BASE_URL, _opendrive_cover_path(book_id))
+    remote_path = _opendrive_cover_path(book_id)
+    full_remote = f"{RCLONE_REMOTE}:{remote_path}"
+    tmp_dir = tempfile.mkdtemp(prefix="aubooks_cover_")
+    local_path = os.path.join(tmp_dir, f"{book_id}.jpg")
 
     try:
-        request = urllib.request.Request(cover_url)
-        response = urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS)
-        content_type = response.headers.get("Content-Type", "image/jpeg")
-        data = response.read()
-        response.close()
+        result = subprocess.run(
+            [
+                "rclone",
+                "copyto",
+                full_remote,
+                local_path,
+                "--no-traverse",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=RCLONE_TIMEOUT_SECONDS,
+            env=_rclone_env(),
+        )
+
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "not found" in stderr.lower() or "error 404" in stderr.lower():
+                log.debug("Cover not found on OpenDrive for book %s", book_id)
+            else:
+                log.warning(
+                    "rclone cover fetch failed for book %s: %s", book_id, stderr
+                )
+            return None, None
+
+        if not os.path.isfile(local_path) or os.path.getsize(local_path) == 0:
+            return None, None
+
+        with open(local_path, "rb") as f:
+            data = f.read()
 
         if len(data) == 0:
             return None, None
@@ -59,21 +90,26 @@ def fetch_cover_from_opendrive(book_id):
 
         _cover_cache[book_id] = {
             "data": data,
-            "content_type": content_type,
+            "content_type": "image/jpeg",
             "ts": time.time(),
         }
-        return data, content_type
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            log.debug("Cover not found on OpenDrive for book %s", book_id)
-        else:
-            log.warning(
-                "OpenDrive proxy HTTP %d for book %s: %s", e.code, book_id, e.reason
-            )
+        return data, "image/jpeg"
+
+    except subprocess.TimeoutExpired:
+        log.warning("rclone cover fetch timed out for book %s", book_id)
         return None, None
-    except (urllib.error.URLError, OSError, TimeoutError) as e:
-        log.warning("OpenDrive proxy request failed for book %s: %s", book_id, e)
+    except Exception as e:
+        log.warning("Error fetching cover from OpenDrive for book %s: %s", book_id, e)
         return None, None
+    finally:
+        try:
+            os.unlink(local_path)
+        except OSError:
+            pass
+        try:
+            os.rmdir(tmp_dir)
+        except OSError:
+            pass
 
 
 def compute_opendrive_path(book_id, fmt):
