@@ -74,6 +74,10 @@ def get_tts_jobs_json():
         if meta is None:
             continue
         status = r["status"]
+        can_cancel = (current_user.role_admin()
+                      and status in ("queued", "processing")
+                      and isinstance(r.get("job_id"), str)
+                      and bool(r["job_id"]))
         item = {
             "book_id": bid,
             "title": meta["title"],
@@ -88,6 +92,10 @@ def get_tts_jobs_json():
             "book_url": url_for("web.show_book", book_id=bid),
             "download_url": (url_for("web.download_audiobook", book_id=bid)
                               if status == "ready" and can_download(current_user) else None),
+            "can_cancel": can_cancel,
+            "cancel_url": (url_for("web.cancel_audio_job", book_id=bid)
+                           if can_cancel else None),
+            "cancel_job_id": r["job_id"] if can_cancel else None,
         }
         result.append(item)
 

@@ -748,15 +748,15 @@ class TestTtsJobsTemplate(unittest.TestCase):
         self.assertIn("\\u041e\\u0442\\u043a\\u0440\\u044b\\u0442\\u044c", content)
         self.assertIn("r.action = actionFormatter(null, r)", content)
 
-    def test_no_cancel_button(self):
+    def test_has_admin_cancel_form(self):
         content = self._read()
-        self.assertNotIn("can_cancel", content)
-        self.assertNotIn("cancel_url", content)
-        self.assertNotIn("tts-cancel", content)
-        self.assertNotIn("Отменить озвучивание этой книги?", content)
-        self.assertNotIn("X-Requested-With", content)
-        self.assertNotIn("tts-cancel-error", content)
-        self.assertNotIn("Отменить", content)
+        self.assertIn("can_cancel", content)
+        self.assertIn("cancel_url", content)
+        self.assertIn("tts-cancel-form", content)
+        self.assertIn("Отменить озвучивание этой книги? Уже выполненная часть будет удалена.", content)
+        self.assertIn("Отменить озвучивание", content)
+        self.assertIn('name="csrf_token"', content)
+        self.assertIn("window.confirm", content)
 
     def test_action_keeps_download_and_open_actions(self):
         content = self._read()
@@ -880,11 +880,26 @@ class TestTtsJobsEndpointSecurity(unittest.TestCase):
         self.assertNotIn("requested_by_user_id", data)
         self.assertNotIn("job_id", data)
 
-    def test_cancellation_fields_are_not_returned(self):
+    def test_cancellation_fields_are_admin_only(self):
         book = SimpleNamespace(id=1, title="Книга", authors=[])
-        active = self._request([self._row(1, status="queued", error=None)], [book])[0]
-        self.assertNotIn("can_cancel", active)
-        self.assertNotIn("cancel_url", active)
+        row = self._row(1, status="queued", error=None)
+        normal = self._request([row], [book], admin=False)[0]
+        admin = self._request([row], [book], admin=True)[0]
+        self.assertFalse(normal["can_cancel"])
+        self.assertIsNone(normal["cancel_url"])
+        self.assertIsNone(normal["cancel_job_id"])
+        self.assertTrue(admin["can_cancel"])
+        self.assertEqual(admin["cancel_url"], "/audio/cancel/1")
+        self.assertEqual(admin["cancel_job_id"], "job-1")
+
+    def test_terminal_jobs_are_not_cancellable_for_admin(self):
+        book = SimpleNamespace(id=1, title="Книга", authors=[])
+        for status in ("ready", "failed", "cancelled"):
+            with self.subTest(status=status):
+                item = self._request([self._row(1, status=status)], [book], admin=True)[0]
+                self.assertFalse(item["can_cancel"])
+                self.assertIsNone(item["cancel_url"])
+                self.assertIsNone(item["cancel_job_id"])
 
     def test_ready_download_url_is_available_without_separate_role(self):
         book = SimpleNamespace(id=1, title="Книга", authors=[])

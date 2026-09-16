@@ -5,11 +5,12 @@ import unittest
 from unittest.mock import MagicMock, patch
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+import urllib.error
 from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from cps.aubooks_tts import queue_book, QueueResult
+from cps.aubooks_tts import cancel_job, queue_book, CancelResult, QueueResult
 
 
 class _MockDispatcher(BaseHTTPRequestHandler):
@@ -167,6 +168,57 @@ class TestQueueBookErrors(unittest.TestCase):
             queue_result = queue_book("1", 7)
         self.assertFalse(queue_result.success)
         open_url.assert_not_called()
+
+
+class TestCancelJob(unittest.TestCase):
+    @staticmethod
+    def _response(body):
+        response = MagicMock()
+        response.read.return_value = json.dumps(body).encode("utf-8")
+        response.__enter__.return_value = response
+        return response
+
+    def test_posts_exact_book_and_job_json(self):
+        with patch("urllib.request.urlopen", return_value=self._response({
+                "ok": True, "status": "cancelled", "book_id": 7, "job_id": "job-7",
+        })) as open_url, patch.dict("os.environ", {"TTS_DISPATCH_URL": "http://dispatcher"}):
+            result = cancel_job(7, "job-7")
+        self.assertTrue(result.success)
+        request = open_url.call_args.args[0]
+        self.assertEqual(request.full_url, "http://dispatcher/cancel")
+        self.assertEqual(request.method, "POST")
+        self.assertEqual(json.loads(request.data), {"book_id": 7, "job_id": "job-7"})
+
+    def test_controlled_terminal_responses(self):
+        for status in ("already_cancelled", "already_failed"):
+            with self.subTest(status=status), patch(
+                    "urllib.request.urlopen",
+                    return_value=self._response({"ok": True, "status": status})):
+                result = cancel_job(7, "job-7")
+                self.assertTrue(result.success)
+                self.assertEqual(result.status, status)
+
+    def test_rejected_response_preserves_safe_status(self):
+        error = urllib.error.HTTPError("url", 409, "Conflict", {}, self._response({
+            "ok": False, "code": 409, "status": "ready", "error": "internal",
+        }))
+        with patch("urllib.request.urlopen", side_effect=error):
+            result = cancel_job(7, "job-7")
+        self.assertFalse(result.success)
+        self.assertEqual(result.exit_code, 409)
+        self.assertEqual(result.status, "ready")
+        self.assertNotIn("internal", result.error_message)
+
+    def test_timeout_and_invalid_input_are_controlled(self):
+        with patch("urllib.request.urlopen", side_effect=TimeoutError("timeout")):
+            result = cancel_job(7, "job-7")
+        self.assertFalse(result.success)
+        self.assertEqual(result.status, "timeout")
+        with patch("urllib.request.urlopen") as open_url:
+            invalid = cancel_job(True, "job-7")
+        self.assertFalse(invalid.success)
+        open_url.assert_not_called()
+        self.assertIsInstance(CancelResult(True), CancelResult)
 
 
 if __name__ == "__main__":

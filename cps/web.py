@@ -2026,6 +2026,58 @@ def generate_audio(book_id):
     return redirect(url_for("web.show_book", book_id=book_id), code=303)
 
 
+@web.route("/audio/cancel/<int:book_id>", methods=["POST"])
+@user_login_required
+def cancel_audio_job(book_id):
+    """Cancel the current exact TTS job for a book as administrator."""
+    if not current_user.role_admin():
+        abort(403)
+    if calibre_db.get_filtered_book(book_id, allow_show_archived=True) is None:
+        abort(404)
+
+    from .aubooks_audio import get_audio_record
+    record = get_audio_record(book_id)
+    if record is None:
+        flash(_("Audio job not found. Refresh the page."), category="warning")
+        return redirect(url_for("tasks.get_tasks_status"), code=303)
+
+    status = record.get("status")
+    if status == "ready":
+        flash(_("Аудиокнига уже готова"), category="info")
+        return redirect(url_for("tasks.get_tasks_status"), code=303)
+    if status == "cancelled":
+        flash(_("Озвучивание уже отменено."), category="info")
+        return redirect(url_for("tasks.get_tasks_status"), code=303)
+    if status == "failed":
+        flash(_("Озвучивание уже завершилось с ошибкой."), category="warning")
+        return redirect(url_for("tasks.get_tasks_status"), code=303)
+    if status not in ("queued", "processing") or not record.get("job_id"):
+        flash(_("Задание изменилось. Обновите страницу."), category="warning")
+        return redirect(url_for("tasks.get_tasks_status"), code=303)
+    if request.form.get("job_id") != record["job_id"]:
+        flash(_("Задание изменилось. Обновите страницу."), category="warning")
+        return redirect(url_for("tasks.get_tasks_status"), code=303)
+
+    from .aubooks_tts import cancel_job
+    result = cancel_job(book_id, record["job_id"])
+    if result.success:
+        if result.status == "already_failed":
+            flash(_("Озвучивание уже завершилось с ошибкой."), category="warning")
+        elif result.status == "already_cancelled":
+            flash(_("Озвучивание уже отменено."), category="info")
+        else:
+            flash(_("Озвучивание отменено."), category="success")
+    elif result.status == "ready":
+        flash(_("Аудиокнига уже готова"), category="info")
+    elif result.status in ("stale_job", "conflict"):
+        flash(_("Задание изменилось. Обновите страницу."), category="warning")
+    else:
+        log.warning("TTS cancellation failed for book %d, job %s (exit %d): %s",
+                    book_id, record["job_id"], result.exit_code, result.error_message)
+        flash(_("Не удалось отменить озвучивание. Попробуйте позже."), category="error")
+    return redirect(url_for("tasks.get_tasks_status"), code=303)
+
+
 # ---------------------------------------------------------------------------
 # AU-Books: Download ready audiobook from OpenDrive
 # ---------------------------------------------------------------------------

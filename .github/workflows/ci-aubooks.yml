@@ -48,6 +48,8 @@ jobs:
             tests/test_invite_admin.py \
             tests/test_aubooks_registration.py \
             tests/test_aubooks_theme_templates.py \
+            tests/test_aubooks_tts_transport.py \
+            tests/test_aubooks_tts_cancellation.py \
             tests/test_calibre_web_deploy_helper.py
 
   build:
