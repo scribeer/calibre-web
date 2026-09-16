@@ -381,7 +381,11 @@ block_service_start() {
   fi
   systemctl mask --runtime "$SERVICE_NAME" || return 1
   SERVICE_UNIT_FILE_STATE="$(systemctl show --property=UnitFileState --value "$SERVICE_NAME")" || return 1
-  [[ "$SERVICE_UNIT_FILE_STATE" == "masked-runtime" ]] || return 1
+  if [[ "$SERVICE_UNIT_FILE_STATE" != "masked-runtime" && "$SERVICE_UNIT_FILE_STATE" != "masked" ]]; then
+    if [[ ! -L "/run/systemd/system/$SERVICE_NAME" ]]; then
+      return 1
+    fi
+  fi
   SERVICE_START_BLOCKED=1
 }
 
@@ -389,7 +393,11 @@ allow_service_start() {
   [[ "$SERVICE_MASK_OWNED" -eq 1 ]] || return 0
   systemctl unmask --runtime "$SERVICE_NAME" || return 1
   SERVICE_UNIT_FILE_STATE="$(systemctl show --property=UnitFileState --value "$SERVICE_NAME")" || return 1
-  [[ "$SERVICE_UNIT_FILE_STATE" != "masked" && "$SERVICE_UNIT_FILE_STATE" != "masked-runtime" ]] || return 1
+  if [[ "$SERVICE_UNIT_FILE_STATE" == "masked" || "$SERVICE_UNIT_FILE_STATE" == "masked-runtime" ]]; then
+    if [[ -L "/run/systemd/system/$SERVICE_NAME" ]]; then
+      return 1
+    fi
+  fi
   SERVICE_START_BLOCKED=0
   SERVICE_MASK_OWNED=0
 }
@@ -602,8 +610,8 @@ health_check() {
     health_diagnostics 'failed after local HTTP became ready' "$service_state" "$port_state" "$last_http_result"
     return 1
   fi
-  curl --fail --silent --show-error --max-time 20 "$PUBLIC_URL" >/dev/null && public_ok=1
-  curl --fail --silent --show-error --max-time 20 "${PUBLIC_URL%/}/login" >/dev/null && login_ok=1
+  curl --fail --silent --show-error --max-time 20 -A "Mozilla/5.0 AU-Books-Deploy" "$PUBLIC_URL" >/dev/null && public_ok=1
+  curl --fail --silent --show-error --max-time 20 -A "Mozilla/5.0 AU-Books-Deploy" "${PUBLIC_URL%/}/login" >/dev/null && login_ok=1
   journal_output="$(journalctl -u "$SERVICE_NAME" --since "@$DEPLOY_STARTED_AT" --no-pager)" || return 1
   if grep -q 'Traceback (most recent call last)' <<< "$journal_output"; then
     return 1
