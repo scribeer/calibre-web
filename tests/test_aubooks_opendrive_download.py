@@ -84,6 +84,10 @@ class TestFetchEbookFromOpendrive(unittest.TestCase):
         self.assertTrue(os.path.isfile(local_path))
         self.assertTrue(local_path.endswith("10.fb2"))
         self.assertTrue(callable(cleanup))
+        command = mock_run.call_args.args[0]
+        self.assertEqual(
+            command[2], "opendrive_content:calibre-books-v2/1/10.fb2"
+        )
 
         cleanup()
         self.assertFalse(os.path.exists(local_path))
@@ -101,6 +105,23 @@ class TestFetchEbookFromOpendrive(unittest.TestCase):
 
         self.assertIsNone(local_path)
         self.assertIsNone(cleanup)
+
+    @patch("cps.opendrive.subprocess.run")
+    def test_ebook_rclone_config_passed(self, mock_run):
+        def side_effect(cmd, **kwargs):
+            Path(cmd[3]).write_bytes(b"fake fb2 content")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        mock_run.side_effect = side_effect
+        with patch.dict(os.environ, {"RCLONE_CONFIG": "/tmp/test-rclone.conf"}):
+            from cps.opendrive import fetch_ebook_from_opendrive
+            local_path, cleanup = fetch_ebook_from_opendrive(10, "FB2")
+
+        self.assertEqual(
+            mock_run.call_args.kwargs["env"]["RCLONE_CONFIG"],
+            "/tmp/test-rclone.conf",
+        )
+        cleanup()
 
     @patch("cps.opendrive.subprocess.run")
     def test_empty_file(self, mock_run):

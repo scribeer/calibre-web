@@ -29,6 +29,7 @@ Route использовал hardcoded remote `opendrive:`, которого н�
 - `py_compile`: успешно.
 - `git diff --check`: успешно.
 - Production acceptance выявил, что Tornado WSGI выполняет `b"".join(response)` и при нескольких больших M4B может быть убит OOM killer. Поэтому body передан существующему nginx static handler через `X-Accel-Redirect`.
+- Обязательный FB2 smoke обнаружил pre-existing hardcoded `opendrive:` в ebook fallback. Он заменён на уже существующие `RCLONE_REMOTE` и `_rclone_env()`; storage architecture не менялась.
 ## Ограничения
 - Каждый download сначала временно сохраняет полный M4B на VPS2; постоянного хранения и Python RAM buffering нет. Cleanup delay составляет 30 секунд после передачи файла nginx.
 ## Commit

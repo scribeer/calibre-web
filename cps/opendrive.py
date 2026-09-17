@@ -134,13 +134,14 @@ def fetch_ebook_from_opendrive(book_id, fmt):
             [
                 "rclone",
                 "copyto",
-                f"opendrive:{remote_path}",
+                f"{RCLONE_REMOTE}:{remote_path}",
                 local_path,
                 "--no-traverse",
             ],
             capture_output=True,
             text=True,
             timeout=60,
+            env=_rclone_env(),
         )
 
         if result.returncode != 0:
