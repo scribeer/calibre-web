@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from flask import Flask, get_flashed_messages, redirect, request, url_for
 from jinja2 import DictLoader, Environment
-from werkzeug.exceptions import Forbidden, InternalServerError, NotFound
+from werkzeug.exceptions import Conflict, Forbidden, InternalServerError, NotFound, ServiceUnavailable
 
 
 class TestAubooksUserPermissions(unittest.TestCase):
@@ -168,15 +168,23 @@ class TestAubooksUserPermissions(unittest.TestCase):
         self.assertNotIn("private dispatcher detail", messages)
         self.assertIn("Unable to start audio generation", messages)
 
-    def _download_audio(self, user, visible=True, run_side_effect=None):
+    def _download_audio(self, user, visible=True):
+        import tempfile
+
         record = {
             "status": "ready",
+            "filename": "Test audiobook.m4b",
             "opendrive_path": "Audiobooks/2026/09/test.m4b",
+            "filesize": 3,
         }
 
-        def successful_run(command, **kwargs):
-            Path(command[3]).write_bytes(b"m4b")
-            return SimpleNamespace(returncode=0, stderr="")
+        temp_dir = Path(tempfile.mkdtemp(prefix="aubooks_test_audio_"))
+        local_path = temp_dir / "test.m4b"
+        local_path.write_bytes(b"m4b")
+
+        def cleanup():
+            local_path.unlink(missing_ok=True)
+            temp_dir.rmdir()
 
         with self.app.test_request_context("/books/10/audio/download"), \
                 patch.object(self.web, "current_user", user), \
@@ -184,18 +192,23 @@ class TestAubooksUserPermissions(unittest.TestCase):
                 patch.object(self.web.calibre_db, "get_filtered_book",
                              return_value=object() if visible else None), \
                 patch("cps.aubooks_audio.get_audio_record", return_value=record) as audio_record, \
-                patch.object(self.web.subprocess, "run",
-                             side_effect=run_side_effect or successful_run):
+                patch("cps.aubooks_audio.fetch_audiobook_from_opendrive",
+                      return_value=(str(local_path), cleanup)) as fetch:
             response = self.web.download_audiobook.__wrapped__(10)
             messages = get_flashed_messages()
-        return response, messages, audio_record
+        return response, messages, audio_record, fetch, local_path
 
     def test_normal_user_can_download_ready_audio_without_download_role(self):
         user = self._user(True, download=False)
-        response, _, _ = self._download_audio(user)
+        response, _, _, fetch, local_path = self._download_audio(user)
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "audio/mp4")
         self.assertIn("attachment", response.headers["Content-Disposition"])
+        self.assertIn(".m4b", response.headers["Content-Disposition"])
+        self.assertTrue(local_path.exists())
+        fetch.assert_called_once_with("Audiobooks/2026/09/test.m4b", 3)
         response.close()
+        self.assertFalse(local_path.exists())
         user.role_download.assert_not_called()
 
     def test_hidden_audio_book_is_404_before_record_lookup(self):
@@ -219,14 +232,134 @@ class TestAubooksUserPermissions(unittest.TestCase):
                 patch.object(self.permissions.config, "config_theme", 3, create=True), \
                 patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
                 patch("cps.aubooks_audio.get_audio_record", return_value=record), \
-                patch.object(self.web.subprocess, "run",
-                             side_effect=RuntimeError("/home/private/token")), \
+                patch("cps.aubooks_audio.fetch_audiobook_from_opendrive",
+                      side_effect=RuntimeError("/home/private/token")), \
                 patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
             with self.assertRaises(InternalServerError):
                 self.web.download_audiobook.__wrapped__(10)
             messages = " ".join(get_flashed_messages())
         self.assertNotIn("/home/private", messages)
         self.assertIn("Error downloading audio.", messages)
+
+    def test_non_ready_audio_is_conflict(self):
+        record = {"status": "processing"}
+        with self.app.test_request_context("/books/10/audio/download"), \
+                patch.object(self.web, "current_user", self._user(True)), \
+                patch.object(self.permissions.config, "config_theme", 3, create=True), \
+                patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
+                patch("cps.aubooks_audio.get_audio_record", return_value=record), \
+                patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
+            with self.assertRaises(Conflict):
+                self.web.download_audiobook.__wrapped__(10)
+
+    def test_missing_audio_row_is_not_found(self):
+        with self.app.test_request_context("/books/10/audio/download"), \
+                patch.object(self.web, "current_user", self._user(True)), \
+                patch.object(self.permissions.config, "config_theme", 3, create=True), \
+                patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
+                patch("cps.aubooks_audio.get_audio_record", return_value=None), \
+                patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
+            with self.assertRaises(NotFound):
+                self.web.download_audiobook.__wrapped__(10)
+
+    def test_audio_database_failure_is_service_unavailable(self):
+        from cps.aubooks_audio import AudioDatabaseError
+
+        with self.app.test_request_context("/books/10/audio/download"), \
+                patch.object(self.web, "current_user", self._user(True)), \
+                patch.object(self.permissions.config, "config_theme", 3, create=True), \
+                patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
+                patch("cps.aubooks_audio.get_audio_record",
+                      side_effect=AudioDatabaseError("database unavailable")), \
+                patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
+            with self.assertRaises(ServiceUnavailable):
+                self.web.download_audiobook.__wrapped__(10)
+
+    def test_remote_failure_is_service_unavailable(self):
+        from cps.aubooks_audio import AudioRemoteUnavailableError
+
+        record = {
+            "status": "ready",
+            "opendrive_path": "Audiobooks/2026/09/test.m4b",
+            "filesize": 3,
+        }
+        with self.app.test_request_context("/books/10/audio/download"), \
+                patch.object(self.web, "current_user", self._user(True)), \
+                patch.object(self.permissions.config, "config_theme", 3, create=True), \
+                patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
+                patch("cps.aubooks_audio.get_audio_record", return_value=record), \
+                patch("cps.aubooks_audio.fetch_audiobook_from_opendrive",
+                      side_effect=AudioRemoteUnavailableError("private rclone detail")), \
+                patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
+            with self.assertRaises(ServiceUnavailable):
+                self.web.download_audiobook.__wrapped__(10)
+
+    def test_remote_missing_is_not_found(self):
+        from cps.aubooks_audio import AudioRemoteMissingError
+
+        record = {
+            "status": "ready",
+            "opendrive_path": "Audiobooks/2026/09/missing.m4b",
+            "filesize": 3,
+        }
+        with self.app.test_request_context("/books/10/audio/download"), \
+                patch.object(self.web, "current_user", self._user(True)), \
+                patch.object(self.permissions.config, "config_theme", 3, create=True), \
+                patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
+                patch("cps.aubooks_audio.get_audio_record", return_value=record), \
+                patch("cps.aubooks_audio.fetch_audiobook_from_opendrive",
+                      side_effect=AudioRemoteMissingError("not found")), \
+                patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
+            with self.assertRaises(NotFound):
+                self.web.download_audiobook.__wrapped__(10)
+
+    def test_invalid_stored_audio_path_is_not_found(self):
+        from cps.aubooks_audio import InvalidAudioPathError
+
+        record = {
+            "status": "ready",
+            "opendrive_path": "../../secret.m4b",
+            "filesize": 3,
+        }
+        with self.app.test_request_context("/books/10/audio/download"), \
+                patch.object(self.web, "current_user", self._user(True)), \
+                patch.object(self.permissions.config, "config_theme", 3, create=True), \
+                patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
+                patch("cps.aubooks_audio.get_audio_record", return_value=record), \
+                patch("cps.aubooks_audio.fetch_audiobook_from_opendrive",
+                      side_effect=InvalidAudioPathError("invalid")), \
+                patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
+            with self.assertRaises(NotFound):
+                self.web.download_audiobook.__wrapped__(10)
+
+    def test_temp_is_cleaned_if_response_creation_fails(self):
+        import tempfile
+
+        record = {
+            "status": "ready",
+            "opendrive_path": "Audiobooks/2026/09/test.m4b",
+            "filesize": 3,
+        }
+        temp_dir = Path(tempfile.mkdtemp(prefix="aubooks_test_response_failure_"))
+        local_path = temp_dir / "test.m4b"
+        local_path.write_bytes(b"m4b")
+
+        def cleanup():
+            local_path.unlink(missing_ok=True)
+            temp_dir.rmdir()
+
+        with self.app.test_request_context("/books/10/audio/download"), \
+                patch.object(self.web, "current_user", self._user(True)), \
+                patch.object(self.permissions.config, "config_theme", 3, create=True), \
+                patch.object(self.web.calibre_db, "get_filtered_book", return_value=object()), \
+                patch("cps.aubooks_audio.get_audio_record", return_value=record), \
+                patch("cps.aubooks_audio.fetch_audiobook_from_opendrive",
+                      return_value=(str(local_path), cleanup)), \
+                patch("flask.send_file", side_effect=RuntimeError("response failed")), \
+                patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
+            with self.assertRaises(InternalServerError):
+                self.web.download_audiobook.__wrapped__(10)
+        self.assertFalse(temp_dir.exists())
 
     def test_standard_theme_keeps_ebook_download_role(self):
         user = self._user(True, download=False)

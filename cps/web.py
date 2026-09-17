@@ -22,7 +22,6 @@ import os
 import json
 import mimetypes
 import re
-import subprocess
 import chardet  # dependency of requests
 import copy
 from importlib.metadata import metadata
@@ -2090,7 +2089,15 @@ def download_audiobook(book_id):
     Fetches the M4B file from OpenDrive and serves it as a download.
     Uses server-side rclone fetch with temp file cleanup.
     """
-    from .aubooks_audio import get_audio_record
+    from .aubooks_audio import (
+        AudioDatabaseError,
+        AudioRemoteMissingError,
+        AudioRemoteUnavailableError,
+        AudioTempStorageError,
+        InvalidAudioPathError,
+        fetch_audiobook_from_opendrive,
+        get_audio_record,
+    )
 
     if not can_download(current_user):
         abort(403)
@@ -2100,14 +2107,22 @@ def download_audiobook(book_id):
         abort(404)
 
     # 2. Check audio status — only ready allowed
-    record = get_audio_record(book_id)
+    try:
+        record = get_audio_record(book_id, raise_errors=True)
+    except AudioDatabaseError as exc:
+        log.error("Audio index unavailable for audiobook book %d: %s", book_id, exc)
+        flash(_("Audio download is temporarily unavailable."), category="error")
+        abort(503)
     if record is None:
+        log.warning("Audiobook download requested without audio row for book %d", book_id)
         flash(_("Audio record not found."), category="error")
         abort(404)
 
     if record.get("status") != "ready":
+        log.info("Audiobook download rejected for book %d with status %s",
+                 book_id, record.get("status"))
         flash(_("Audio is not ready for download."), category="error")
-        abort(404)
+        abort(409)
 
     # 3. Get OpenDrive path from the record
     od_path = record.get("opendrive_path")
@@ -2115,51 +2130,18 @@ def download_audiobook(book_id):
         flash(_("Audio file path not available."), category="error")
         abort(404)
 
-    # 4. Validate od_path does not contain traversal
-    if ".." in od_path or od_path.startswith("/"):
-        flash(_("Invalid audio file path."), category="error")
-        abort(404)
-
-    # 5. Use opendrive_path directly (not computed path)
-    remote_path = od_path
-
-    # 6. Fetch file from OpenDrive using rclone
-    import tempfile
-    import os
+    # Use only the trusted OpenDrive path stored in the local audio index.
     from flask import send_file
 
-    dest_dir = tempfile.mkdtemp(prefix="aubooks_audio_")
-    local_path = os.path.join(dest_dir, "audiobook.m4b")
-
+    cleanup = None
     try:
-        result = subprocess.run(
-            [
-                "rclone",
-                "copyto",
-                f"opendrive:{remote_path}",
-                local_path,
-                "--no-traverse",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=120,
+        local_path, cleanup = fetch_audiobook_from_opendrive(
+            od_path, record.get("filesize")
         )
-
-        if result.returncode != 0:
-            stderr = result.stderr.strip()
-            if "not found" in stderr.lower() or "error 404" in stderr.lower():
-                flash(_("Audio file not found on OpenDrive."), category="error")
-                abort(404)
-            flash(_("Failed to download audio from OpenDrive."), category="error")
-            abort(500)
-
-        # 7. Verify file exists and is non-empty
-        if not os.path.isfile(local_path) or os.path.getsize(local_path) == 0:
-            flash(_("Downloaded file is empty or missing."), category="error")
-            abort(500)
-
-        # 8. Serve file as download with proper headers
-        filename = od_path.split("/")[-1]  # e.g., vladislav-yurevich-dorofeev-kladbishche-cheloveka.m4b
+        stored_filename = record.get("filename") or ""
+        filename = (stored_filename if stored_filename.lower().endswith(".m4b")
+                    and os.path.basename(stored_filename) == stored_filename
+                    else od_path.rsplit("/", 1)[-1])
         response = send_file(
             local_path,
             mimetype="audio/mp4",
@@ -2167,20 +2149,27 @@ def download_audiobook(book_id):
             download_name=filename,
         )
 
-        # 9. Clean up temp file after response
-        @response.call_on_close
-        def cleanup():
-            try:
-                os.unlink(local_path)
-            except OSError:
-                pass
-            try:
-                os.rmdir(dest_dir)
-            except OSError:
-                pass
-
+        response.call_on_close(cleanup)
+        cleanup = None
         return response
-
+    except InvalidAudioPathError as exc:
+        log.error("Rejected invalid audio path for book %d: %s", book_id, exc)
+        flash(_("Invalid audio file path."), category="error")
+        abort(404)
+    except AudioRemoteMissingError as exc:
+        log.warning("Audiobook is missing remotely for book %d at %s: %s",
+                    book_id, od_path, exc)
+        flash(_("Audio file not found on OpenDrive."), category="error")
+        abort(404)
+    except AudioTempStorageError as exc:
+        log.error("Temporary storage unavailable for audiobook book %d: %s", book_id, exc)
+        flash(_("Audio download is temporarily unavailable."), category="error")
+        abort(503)
+    except AudioRemoteUnavailableError as exc:
+        log.error("OpenDrive audiobook download failed for book %d at %s: %s",
+                  book_id, od_path, exc)
+        flash(_("Audio download is temporarily unavailable."), category="error")
+        abort(503)
     except HTTPException:
         raise
     except Exception:
@@ -2188,9 +2177,8 @@ def download_audiobook(book_id):
         flash(_("Error downloading audio."), category="error")
         abort(500)
     finally:
-        # Clean up temp dir if not already cleaned
-        import shutil
         try:
-            shutil.rmtree(dest_dir, ignore_errors=True)
-        except:
-            pass
+            if cleanup is not None:
+                cleanup()
+        except OSError:
+            log.warning("Failed to clean temporary audiobook for book %d", book_id)
