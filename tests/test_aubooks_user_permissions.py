@@ -183,8 +183,8 @@ class TestAubooksUserPermissions(unittest.TestCase):
         local_path.write_bytes(b"m4b")
 
         def cleanup():
-            local_path.unlink(missing_ok=True)
-            temp_dir.rmdir()
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
         with self.app.test_request_context("/books/10/audio/download"), \
                 patch.object(self.web, "current_user", user), \
@@ -207,6 +207,8 @@ class TestAubooksUserPermissions(unittest.TestCase):
         self.assertIn(".m4b", response.headers["Content-Disposition"])
         self.assertTrue(local_path.exists())
         fetch.assert_called_once_with("Audiobooks/2026/09/test.m4b", 3)
+        self.assertEqual(b"".join(response.response), b"m4b")
+        self.assertFalse(local_path.exists())
         response.close()
         self.assertFalse(local_path.exists())
         user.role_download.assert_not_called()
@@ -345,8 +347,8 @@ class TestAubooksUserPermissions(unittest.TestCase):
         local_path.write_bytes(b"m4b")
 
         def cleanup():
-            local_path.unlink(missing_ok=True)
-            temp_dir.rmdir()
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
         with self.app.test_request_context("/books/10/audio/download"), \
                 patch.object(self.web, "current_user", self._user(True)), \

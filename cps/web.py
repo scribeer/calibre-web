@@ -2149,6 +2149,21 @@ def download_audiobook(book_id):
             download_name=filename,
         )
 
+        file_iterator = response.response
+        response_cleanup = cleanup
+
+        def stream_and_cleanup():
+            try:
+                yield from file_iterator
+            finally:
+                try:
+                    close_iterator = getattr(file_iterator, "close", None)
+                    if close_iterator is not None:
+                        close_iterator()
+                finally:
+                    response_cleanup()
+
+        response.response = stream_and_cleanup()
         response.call_on_close(cleanup)
         cleanup = None
         return response

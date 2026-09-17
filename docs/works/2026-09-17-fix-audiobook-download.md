@@ -21,14 +21,14 @@ Route использовал hardcoded remote `opendrive:`, которого н�
 - Допускаются только относительные `Audiobooks/.../*.m4b` без traversal, backslash и remote injection.
 - Добавлены disk preflight, explicit `RCLONE_CONFIG`, проверка размера и timeout.
 - M4B скачивается во временный файл и отдаётся через `send_file`, без загрузки целого файла в Python RAM.
-- Cleanup выполняется после закрытия response; при ошибках temp удаляется сразу.
+- Cleanup выполняется в `finally` streaming iterator после полного body или client disconnect; `call_on_close` остаётся idempotent fallback. При ошибках temp удаляется сразу.
 - Row missing, not ready, invalid path, remote missing, rclone/storage failure и database failure имеют отдельные controlled responses и технические логи.
 ## Тесты
 - Focused audiobook tests: 36 passed, 6 subtests.
 - Полный AU-Books regression набор: 405 passed, 261 subtests.
 - `py_compile`: успешно.
 - `git diff --check`: успешно.
-- Production acceptance и smoke checks выполняются после deploy exact SHA.
+- Первый production acceptance подтвердил корректный body, но выявил, что server stack не вызывает один `call_on_close`; это исправлено streaming wrapper и проверяется повторным deploy exact SHA.
 ## Ограничения
 - Каждый download сначала временно сохраняет полный M4B на VPS2; постоянного хранения и RAM buffering нет.
 ## Commit
