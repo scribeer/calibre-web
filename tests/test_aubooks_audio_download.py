@@ -1,6 +1,7 @@
 """Regression tests for ready audiobook downloads from OpenDrive."""
 
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -13,11 +14,24 @@ from cps.aubooks_audio import (
     AudioRemoteUnavailableError,
     AudioTempStorageError,
     InvalidAudioPathError,
+    audiobook_accel_uri,
     fetch_audiobook_from_opendrive,
+    schedule_audiobook_cleanup,
 )
 
 
 class TestFetchAudiobookFromOpendrive(unittest.TestCase):
+    def setUp(self):
+        self.temp_root = tempfile.mkdtemp(prefix="aubooks_test_audio_root_")
+        self.env = patch.dict(
+            os.environ, {"AUBOOKS_AUDIO_TEMP_DIR": self.temp_root}, clear=False
+        )
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        shutil.rmtree(self.temp_root, ignore_errors=True)
+
     def _successful_run(self, data=b"m4b-data"):
         def run(command, **kwargs):
             Path(command[3]).write_bytes(data)
@@ -48,6 +62,10 @@ class TestFetchAudiobookFromOpendrive(unittest.TestCase):
             "/opt/calibre-web/config/rclone/rclone.conf",
         )
         self.assertEqual(Path(local_path).read_bytes(), b"m4b-data")
+        self.assertRegex(
+            audiobook_accel_uri(local_path),
+            r"^/static/aubooks-audio/download_[^/]+/test\.m4b$",
+        )
         temp_dir = Path(local_path).parent
         cleanup()
         self.assertFalse(temp_dir.exists())
@@ -131,6 +149,13 @@ class TestFetchAudiobookFromOpendrive(unittest.TestCase):
             fetch_audiobook_from_opendrive(
                 "Audiobooks/2026/09/test.m4b", 238395628
             )
+
+    def test_scheduled_cleanup_runs(self):
+        marker = Path(self.temp_root) / "marker"
+        marker.write_text("temporary", encoding="ascii")
+        timer = schedule_audiobook_cleanup(marker.unlink, delay=0.01)
+        timer.join(timeout=1)
+        self.assertFalse(marker.exists())
 
 
 if __name__ == "__main__":

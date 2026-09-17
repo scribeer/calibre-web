@@ -478,6 +478,7 @@ create_final_rollback_snapshots() {
 create_candidate_release() {
   local venv="$RELEASE_DIR/venv"
   local release_wheel="$RELEASE_DIR/$WHEEL_FILENAME"
+  local static_dir
   install -d -m 0755 -o root -g root "$RELEASE_DIR"
   install -d -m 0755 -o "$SERVICE_USER" "$venv"
   install -m 0444 -o root -g root "$BUNDLE_DIR/$WHEEL_FILENAME" "$release_wheel"
@@ -489,6 +490,8 @@ create_candidate_release() {
   runuser -u "$SERVICE_USER" -- python3 -m venv "$venv"
   runuser -u "$SERVICE_USER" -- "$venv/bin/python" -m pip install "$release_wheel"
   runuser -u "$SERVICE_USER" -- "$venv/bin/python" -m pip check
+  static_dir="$("$venv/bin/python" -c 'import pathlib, sysconfig; print(pathlib.Path(sysconfig.get_path("purelib")) / "calibreweb/cps/static")')"
+  install -d -m 0755 -o "$SERVICE_USER" -g "$SERVICE_USER" "$static_dir/aubooks-audio"
   (
     cd /
     runuser -u "$SERVICE_USER" -- "$venv/bin/cps" --help >/dev/null

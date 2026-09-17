@@ -22,9 +22,11 @@ import os
 import json
 import mimetypes
 import re
+import unicodedata
 import chardet  # dependency of requests
 import copy
 from importlib.metadata import metadata
+from urllib.parse import quote
 
 from flask import Blueprint, jsonify, request, redirect, send_from_directory, make_response, flash, abort, url_for, Response
 from flask import session as flask_session
@@ -2095,8 +2097,10 @@ def download_audiobook(book_id):
         AudioRemoteUnavailableError,
         AudioTempStorageError,
         InvalidAudioPathError,
+        audiobook_accel_uri,
         fetch_audiobook_from_opendrive,
         get_audio_record,
+        schedule_audiobook_cleanup,
     )
 
     if not can_download(current_user):
@@ -2130,9 +2134,6 @@ def download_audiobook(book_id):
         flash(_("Audio file path not available."), category="error")
         abort(404)
 
-    # Use only the trusted OpenDrive path stored in the local audio index.
-    from flask import send_file
-
     cleanup = None
     try:
         local_path, cleanup = fetch_audiobook_from_opendrive(
@@ -2142,29 +2143,18 @@ def download_audiobook(book_id):
         filename = (stored_filename if stored_filename.lower().endswith(".m4b")
                     and os.path.basename(stored_filename) == stored_filename
                     else od_path.rsplit("/", 1)[-1])
-        response = send_file(
-            local_path,
-            mimetype="audio/mp4",
-            as_attachment=True,
-            download_name=filename,
+        ascii_filename = unicodedata.normalize("NFKD", filename).encode(
+            "ascii", "ignore"
+        ).decode("ascii").replace('"', "") or "audiobook.m4b"
+        response = Response(status=200, mimetype="audio/mp4")
+        response.headers["Content-Disposition"] = (
+            'attachment; filename="{}"; filename*=UTF-8\'\'{}'.format(
+                ascii_filename, quote(filename)
+            )
         )
-
-        file_iterator = response.response
-        response_cleanup = cleanup
-
-        def stream_and_cleanup():
-            try:
-                yield from file_iterator
-            finally:
-                try:
-                    close_iterator = getattr(file_iterator, "close", None)
-                    if close_iterator is not None:
-                        close_iterator()
-                finally:
-                    response_cleanup()
-
-        response.response = stream_and_cleanup()
-        response.call_on_close(cleanup)
+        response.headers["X-Accel-Redirect"] = audiobook_accel_uri(local_path)
+        response.headers["Cache-Control"] = "private, no-store"
+        schedule_audiobook_cleanup(cleanup)
         cleanup = None
         return response
     except InvalidAudioPathError as exc:

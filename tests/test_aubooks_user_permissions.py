@@ -193,22 +193,30 @@ class TestAubooksUserPermissions(unittest.TestCase):
                              return_value=object() if visible else None), \
                 patch("cps.aubooks_audio.get_audio_record", return_value=record) as audio_record, \
                 patch("cps.aubooks_audio.fetch_audiobook_from_opendrive",
-                      return_value=(str(local_path), cleanup)) as fetch:
+                      return_value=(str(local_path), cleanup)) as fetch, \
+                patch("cps.aubooks_audio.audiobook_accel_uri",
+                      return_value="/static/aubooks-audio/token/test.m4b"), \
+                patch("cps.aubooks_audio.schedule_audiobook_cleanup") as schedule_cleanup:
             response = self.web.download_audiobook.__wrapped__(10)
             messages = get_flashed_messages()
-        return response, messages, audio_record, fetch, local_path
+        return response, messages, audio_record, fetch, schedule_cleanup, local_path
 
     def test_normal_user_can_download_ready_audio_without_download_role(self):
         user = self._user(True, download=False)
-        response, _, _, fetch, local_path = self._download_audio(user)
+        response, _, _, fetch, schedule_cleanup, local_path = self._download_audio(user)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, "audio/mp4")
         self.assertIn("attachment", response.headers["Content-Disposition"])
         self.assertIn(".m4b", response.headers["Content-Disposition"])
         self.assertTrue(local_path.exists())
         fetch.assert_called_once_with("Audiobooks/2026/09/test.m4b", 3)
-        self.assertEqual(b"".join(response.response), b"m4b")
-        self.assertFalse(local_path.exists())
+        self.assertEqual(response.get_data(), b"")
+        self.assertEqual(
+            response.headers["X-Accel-Redirect"],
+            "/static/aubooks-audio/token/test.m4b",
+        )
+        cleanup = schedule_cleanup.call_args.args[0]
+        cleanup()
         response.close()
         self.assertFalse(local_path.exists())
         user.role_download.assert_not_called()
@@ -357,7 +365,8 @@ class TestAubooksUserPermissions(unittest.TestCase):
                 patch("cps.aubooks_audio.get_audio_record", return_value=record), \
                 patch("cps.aubooks_audio.fetch_audiobook_from_opendrive",
                       return_value=(str(local_path), cleanup)), \
-                patch("flask.send_file", side_effect=RuntimeError("response failed")), \
+                patch("cps.aubooks_audio.audiobook_accel_uri",
+                      side_effect=RuntimeError("response failed")), \
                 patch.object(self.web, "_", side_effect=lambda message, **kwargs: message):
             with self.assertRaises(InternalServerError):
                 self.web.download_audiobook.__wrapped__(10)

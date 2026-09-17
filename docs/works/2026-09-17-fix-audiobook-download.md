@@ -20,17 +20,17 @@ Route использовал hardcoded remote `opendrive:`, которого н�
 - Remote name безопасно извлекается из существующего `AUBOOKS_BOOKS_REMOTE`; remote path берётся только из local `audio.db`.
 - Допускаются только относительные `Audiobooks/.../*.m4b` без traversal, backslash и remote injection.
 - Добавлены disk preflight, explicit `RCLONE_CONFIG`, проверка размера и timeout.
-- M4B скачивается во временный файл и отдаётся через `send_file`, без загрузки целого файла в Python RAM.
-- Cleanup выполняется в `finally` streaming iterator после полного body или client disconnect; `call_on_close` остаётся idempotent fallback. При ошибках temp удаляется сразу.
+- M4B скачивается во временный release-local файл; Flask возвращает `X-Accel-Redirect`, а существующий nginx `/static/` отдаёт body без буферизации Tornado WSGI в Python RAM.
+- Cleanup запускается daemon timer после передачи управления nginx и выполняется также после client disconnect; при ошибках temp удаляется сразу.
 - Row missing, not ready, invalid path, remote missing, rclone/storage failure и database failure имеют отдельные controlled responses и технические логи.
 ## Тесты
 - Focused audiobook tests: 36 passed, 6 subtests.
 - Полный AU-Books regression набор: 405 passed, 261 subtests.
 - `py_compile`: успешно.
 - `git diff --check`: успешно.
-- Первый production acceptance подтвердил корректный body, но выявил, что server stack не вызывает один `call_on_close`; это исправлено streaming wrapper и проверяется повторным deploy exact SHA.
+- Production acceptance выявил, что Tornado WSGI выполняет `b"".join(response)` и при нескольких больших M4B может быть убит OOM killer. Поэтому body передан существующему nginx static handler через `X-Accel-Redirect`.
 ## Ограничения
-- Каждый download сначала временно сохраняет полный M4B на VPS2; постоянного хранения и RAM buffering нет.
+- Каждый download сначала временно сохраняет полный M4B на VPS2; постоянного хранения и Python RAM buffering нет. Cleanup delay составляет 30 секунд после передачи файла nginx.
 ## Commit
 - Fix commit: `f2cedcfc4bd477d567ff0a3c375c8326706d48ab`.
 - Streaming cleanup fix: `7e327e92e733c5a4baba413b452088ded8551660`.

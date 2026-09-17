@@ -12,7 +12,9 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+import threading
 from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ _FINISHED_LIMIT = 50
 _DEFAULT_BOOKS_REMOTE = "opendrive_content:calibre-books-v2"
 _AUDIO_DOWNLOAD_RESERVE_BYTES = 64 * 1024 * 1024
 _AUDIO_DOWNLOAD_TIMEOUT_SECONDS = 1800
+_AUDIO_CLEANUP_DELAY_SECONDS = 30
 _RCLONE_REMOTE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -89,6 +92,32 @@ def _rclone_env() -> dict:
     return env
 
 
+def _audio_temp_root() -> Path:
+    return Path(os.environ.get(
+        "AUBOOKS_AUDIO_TEMP_DIR",
+        "/run/calibre-web-static/current/aubooks-audio",
+    ))
+
+
+def audiobook_accel_uri(local_path: str) -> str:
+    root = _audio_temp_root().resolve()
+    path = Path(local_path).resolve()
+    try:
+        relative_path = path.relative_to(root)
+    except ValueError as exc:
+        raise AudioTempStorageError("audio temp file is outside configured root") from exc
+    return "/static/aubooks-audio/{}".format(
+        "/".join(quote(part, safe="") for part in relative_path.parts)
+    )
+
+
+def schedule_audiobook_cleanup(cleanup, delay: int = _AUDIO_CLEANUP_DELAY_SECONDS):
+    timer = threading.Timer(delay, cleanup)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
 def fetch_audiobook_from_opendrive(remote_path: str, expected_size: int | None = None):
     """Download a trusted audio.db M4B path to temporary storage.
 
@@ -104,7 +133,9 @@ def fetch_audiobook_from_opendrive(remote_path: str, expected_size: int | None =
         expected_size = 0
 
     try:
-        free_bytes = shutil.disk_usage(tempfile.gettempdir()).free
+        temp_root = _audio_temp_root()
+        temp_root.mkdir(mode=0o755, parents=True, exist_ok=True)
+        free_bytes = shutil.disk_usage(temp_root).free
     except OSError as exc:
         raise AudioTempStorageError("cannot inspect temporary storage") from exc
     required_bytes = max(expected_size, 0) + _AUDIO_DOWNLOAD_RESERVE_BYTES
@@ -116,7 +147,8 @@ def fetch_audiobook_from_opendrive(remote_path: str, expected_size: int | None =
         )
 
     try:
-        dest_dir = tempfile.mkdtemp(prefix="aubooks_audio_")
+        dest_dir = tempfile.mkdtemp(prefix="download_", dir=temp_root)
+        os.chmod(dest_dir, 0o755)
     except OSError as exc:
         raise AudioTempStorageError("cannot create temporary directory") from exc
     local_path = os.path.join(dest_dir, PurePosixPath(validated_path).name)
