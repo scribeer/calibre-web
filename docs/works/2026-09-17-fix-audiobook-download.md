@@ -33,3 +33,4 @@ Route использовал hardcoded remote `opendrive:`, которого н�
 - Каждый download сначала временно сохраняет полный M4B на VPS2; постоянного хранения и RAM buffering нет.
 ## Commit
 - Fix commit: `f2cedcfc4bd477d567ff0a3c375c8326706d48ab`.
+- Streaming cleanup fix: `7e327e92e733c5a4baba413b452088ded8551660`.
