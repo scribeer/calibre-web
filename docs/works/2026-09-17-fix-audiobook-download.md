@@ -34,3 +34,4 @@ Route использовал hardcoded remote `opendrive:`, которого н�
 ## Commit
 - Fix commit: `f2cedcfc4bd477d567ff0a3c375c8326706d48ab`.
 - Streaming cleanup fix: `7e327e92e733c5a4baba413b452088ded8551660`.
+- Nginx offload fix: `1a49a64432286f9c9fef81e6194fc99d219b2bdf`.
