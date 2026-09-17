@@ -644,8 +644,8 @@ def update_view_configuration():
         config.config_default_show |= constants.DETAIL_RANDOM
 
     config.save()
-    flash(_("Calibre-Web configuration updated"), category="success")
-    log.debug("Calibre-Web configuration updated")
+    flash(_("Configuration updated"), category="success")
+    log.debug("Configuration updated")
     before_request()
 
     return view_configuration()
@@ -683,12 +683,12 @@ def load_dialogtexts(element_id):
     elif element_id == "kobo_only_shelves_sync":
         texts["main"] = _('Are you sure you want to change shelf sync behavior for the selected user(s)?')
     elif element_id == "db_submit":
-        texts["main"] = _('Are you sure you want to change Calibre library location?')
+        texts["main"] = _('Are you sure you want to change library location?')
     elif element_id == "admin_refresh_cover_cache":
-        texts["main"] = _('Calibre-Web will search for updated Covers '
+        texts["main"] = _('The system will search for updated Covers '
                           'and update Cover Thumbnails, this may take a while?')
     elif element_id == "btnfullsync":
-        texts["main"] = _("Are you sure you want delete Calibre-Web's sync database "
+        texts["main"] = _("Are you sure you want delete the sync database "
                           "to force a full sync with your Kobo Reader?")
     return json.dumps(texts)
 
@@ -2017,7 +2017,7 @@ def _configuration_result(error_flash=None, reboot=False):
         config.load()
         resp['result'] = [{'type': "danger", 'message': error_flash}]
     else:
-        resp['result'] = [{'type': "success", 'message': _("Calibre-Web configuration updated")}]
+        resp['result'] = [{'type': "success", 'message': _("Configuration updated")}]
     resp['reboot'] = reboot
     resp['config_upload'] = config.config_upload_formats
     return make_response(jsonify(resp))

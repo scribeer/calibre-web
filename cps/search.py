@@ -363,7 +363,7 @@ def render_adv_search_results(term, offset=None, order=None, limit=None):
             q = adv_search_custom_columns(cc, term, q)
         except AttributeError as ex:
             log.debug_or_exception(ex)
-            flash(_("Error on search for custom columns, please restart Calibre-Web"), category="error")
+            flash(_("Error on search for custom columns, please restart the application"), category="error")
 
     q = q.options(selectinload(db.Books.comments)).order_by(*sort).all()
     flask_session['query'] = json.dumps(term)

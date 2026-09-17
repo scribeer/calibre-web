@@ -40,7 +40,7 @@ log = logger.create()
 # custom error page
 
 def error_http(error):
-    headers = {'WWW-Authenticate': 'Basic realm="calibre-web"'} if error.code == 401 else {}
+    headers = {'WWW-Authenticate': 'Basic realm="au-books"'} if error.code == 401 else {}
     return themed_render('http_error.html',
                          error_code="Error {0}".format(error.code),
                          error_name=error.name,

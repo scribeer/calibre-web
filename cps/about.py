@@ -61,7 +61,7 @@ def collect_stats():
     elif constants.HOME_CONFIG:
         calibre_web_version += " - pyPi"
 
-    _VERSIONS = {'Calibre Web': calibre_web_version}
+    _VERSIONS = {'AU-Books': calibre_web_version}
     _VERSIONS.update(OrderedDict(
         Python=sys.version,
         Platform='{0[0]} {0[2]} {0[3]} {0[4]} {0[5]}'.format(platform.uname()),

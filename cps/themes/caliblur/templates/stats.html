@@ -2,9 +2,7 @@
 {% block body %}
   <h3>{{_('About')}} {{instance}}</h3>
 {% if not current_user.role_admin() %}
-<p>{{instance}} powered by
-<a href="https://github.com/janeczku/calibre-web" title="Calibre-Web">Calibre-Web</a>.
-</p>
+<p>{{instance}}</p>
 {% endif %}
   <h3>{{_('Library Statistics')}}</h3>
 <table id="stats" class="table">
@@ -47,8 +45,6 @@
   {% endfor %}
   </tbody>
 </table>
-<p>{{instance}} powered by
-<a href="https://github.com/janeczku/calibre-web" title="Calibre-Web">Calibre-Web</a>.
-</p>
+<p>{{instance}}</p>
 {% endif %}
 {% endblock %}

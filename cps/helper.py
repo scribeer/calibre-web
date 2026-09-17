@@ -103,7 +103,7 @@ def convert_book_format(book_id, calibre_path, old_book_format, new_book_format,
     if ereader_mail:
         settings = config.get_mail_settings()
         settings['subject'] = _('Send to eReader')  # pretranslate Subject for Email
-        settings['body'] = _('This Email has been sent via Calibre-Web.')
+        settings['body'] = _('This Email has been sent via AU-Books.')
     else:
         settings = dict()
     link = '<a href="{}">{}</a>'.format(url_for('web.show_book', book_id=book.id), escape(book.title))  # prevent xss
@@ -121,9 +121,9 @@ def convert_book_format(book_id, calibre_path, old_book_format, new_book_format,
 def send_test_mail(ereader_mail, user_name):
     for email in ereader_mail.split(','):
         email = strip_whitespaces(email)
-        WorkerThread.add(user_name, TaskEmail(_('Calibre-Web Test Email'), None, None,
+        WorkerThread.add(user_name, TaskEmail(_('Test Email'), None, None,
                          config.get_mail_settings(), email, N_("Test Email"),
-                                              _('This Email has been sent via Calibre-Web.')))
+                                              _('This Email has been sent via AU-Books.')))
     return
 
 
@@ -132,14 +132,14 @@ def send_registration_mail(e_mail, user_name, default_password, resend=False, lo
     with force_locale(locale or config.config_default_locale):
         txt = _("Hi %(name)s!", name=user_name) + "\r\n"
         if not resend:
-            txt += _("Your account at Calibre-Web has been created.") + "\r\n"
+            txt += _("Your account at AU-Books has been created.") + "\r\n"
         txt += _("Please log in using the following information:") + "\r\n"
         txt += _("Username: %(name)s", name=user_name) + "\r\n"
         txt += _("Password: %(password)s", password=default_password) + "\r\n"
         txt += _("Don't forget to change your password after your first login.") + "\r\n"
         txt += _("Regards,") + "\r\n\r\n"
-        txt += "Calibre-Web"
-        subject = _('Get Started with Calibre-Web')
+        txt += "AU-Books"
+        subject = _('Get Started with AU-Books')
     WorkerThread.add(None, TaskEmail(
         subject=subject,
         filepath=None,
@@ -235,7 +235,7 @@ def send_mail(book_id, book_format, convert, ereader_mail, calibrepath, user_id)
                 email = strip_whitespaces(email)
                 WorkerThread.add(user_id, TaskEmail(_("Send to eReader"), book.path, converted_file_name,
                                  config.get_mail_settings(), email,
-                                 email_text, _('This Email has been sent via Calibre-Web.'), book.id))
+                                 email_text, _('This Email has been sent via AU-Books.'), book.id))
             return
     return _("The requested file could not be read. Maybe wrong permissions?")
 
