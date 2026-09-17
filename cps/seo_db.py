@@ -11,7 +11,7 @@ except ImportError:
     from sqlalchemy.ext.declarative import declarative_base
 
 from . import ub
-from .seo_urls import book_slug_parts, primary_author
+from .seo_urls import book_slug_parts, primary_author, slugify
 
 
 Base = declarative_base()
@@ -29,6 +29,23 @@ class SeoBookRoute(Base):
     author_slug = Column(String(96), nullable=False)
     book_slug = Column(String(112), nullable=False)
     is_canonical = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class SeoMetadataRoute(Base):
+    __tablename__ = "aubooks_seo_metadata_route"
+    __table_args__ = (
+        UniqueConstraint("library_uuid", "entity_type", "entity_key",
+                         name="uq_aubooks_seo_metadata_entity"),
+        UniqueConstraint("library_uuid", "entity_type", "slug",
+                         name="uq_aubooks_seo_metadata_slug"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    library_uuid = Column(String(36), nullable=False)
+    entity_type = Column(String(24), nullable=False)
+    entity_key = Column(String(160), nullable=False)
+    slug = Column(String(112), nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
@@ -168,3 +185,65 @@ def cached_canonical_parts(library_uuid, book_id):
 
 def clear_route_cache():
     cached_canonical_parts.cache_clear()
+    cached_metadata_slug.cache_clear()
+
+
+def get_metadata_route(library_uuid, entity_type, entity_key, session=None):
+    session = session or ub.session
+    return session.query(SeoMetadataRoute).filter(
+        SeoMetadataRoute.library_uuid == library_uuid,
+        SeoMetadataRoute.entity_type == entity_type,
+        SeoMetadataRoute.entity_key == str(entity_key),
+    ).one_or_none()
+
+
+def resolve_metadata_route(library_uuid, entity_type, slug, session=None):
+    session = session or ub.session
+    return session.query(SeoMetadataRoute).filter(
+        SeoMetadataRoute.library_uuid == library_uuid,
+        SeoMetadataRoute.entity_type == entity_type,
+        SeoMetadataRoute.slug == slug,
+    ).one_or_none()
+
+
+def ensure_metadata_route(library_uuid, entity_type, entity_key, label, session=None):
+    session = session or ub.session
+    entity_key = str(entity_key)
+    existing = get_metadata_route(library_uuid, entity_type, entity_key, session)
+    if existing is not None:
+        return existing
+
+    base_slug = slugify(label, max_length=112, fallback=entity_type)
+    key_slug = slugify(entity_key, max_length=32, fallback="item")
+    suffix = "-{}".format(key_slug)
+    candidate = base_slug
+    attempt = 1
+    while True:
+        occupied = resolve_metadata_route(library_uuid, entity_type, candidate, session)
+        if occupied is not None:
+            extra = suffix if attempt == 1 else "{}-{}".format(suffix, attempt)
+            candidate = "{}{}".format(base_slug[:112 - len(extra)].rstrip("-"), extra)
+            attempt += 1
+            continue
+        route = SeoMetadataRoute(
+            library_uuid=library_uuid,
+            entity_type=entity_type,
+            entity_key=entity_key,
+            slug=candidate,
+        )
+        session.add(route)
+        try:
+            session.commit()
+            cached_metadata_slug.cache_clear()
+            return route
+        except IntegrityError:
+            session.rollback()
+            existing = get_metadata_route(library_uuid, entity_type, entity_key, session)
+            if existing is not None:
+                return existing
+
+
+@lru_cache(maxsize=131072)
+def cached_metadata_slug(library_uuid, entity_type, entity_key):
+    route = get_metadata_route(library_uuid, entity_type, entity_key)
+    return route.slug if route is not None else None

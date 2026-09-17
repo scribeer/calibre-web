@@ -391,7 +391,7 @@ def get_sort_function(sort_param, data):
     return order, sort_param
 
 
-def render_books_list(data, sort_param, book_id, page, text_catalog=False):
+def render_books_list(data, sort_param, book_id, page, text_catalog=False, seo_context=None):
     order = get_sort_function(sort_param, data)
     if data == "rated":
         return render_rated_books(page, book_id, order=order)
@@ -406,19 +406,19 @@ def render_books_list(data, sort_param, book_id, page, text_catalog=False):
     elif data == "download":
         return render_downloaded_books(page, order, book_id)
     elif data == "author":
-        return render_author_books(page, book_id, order)
+        return render_author_books(page, book_id, order, seo_context)
     elif data == "publisher":
-        return render_publisher_books(page, book_id, order)
+        return render_publisher_books(page, book_id, order, seo_context)
     elif data == "series":
-        return render_series_books(page, book_id, order)
+        return render_series_books(page, book_id, order, seo_context)
     elif data == "ratings":
-        return render_ratings_books(page, book_id, order)
+        return render_ratings_books(page, book_id, order, seo_context)
     elif data == "formats":
         return render_formats_books(page, book_id, order)
     elif data == "category":
-        return render_category_books(page, book_id, order)
+        return render_category_books(page, book_id, order, seo_context)
     elif data == "language":
-        return render_language_books(page, book_id, order)
+        return render_language_books(page, book_id, order, seo_context)
     elif data == "archived":
         return render_archived_books(page, order)
     elif data == "search":
@@ -438,9 +438,16 @@ def render_books_list(data, sort_param, book_id, page, text_catalog=False):
                                                                 db.Series,
                                                                 load_comments=text_catalog,
                                                                 load_card_relations=text_catalog)
+        page_context = {}
+        if text_catalog and website == "newest":
+            from .seo import aubooks_page_title, external_url
+            page_context = {
+                "canonical_url": external_url("web.index"),
+                "seo_title": aubooks_page_title("home"),
+            }
         return render_title_template('index.html', random=random, entries=entries, pagination=pagination,
                                      title=_("Books"), page=website, order=order[1],
-                                     show_annotations=text_catalog)
+                                     show_annotations=text_catalog, **page_context)
 
 
 def render_rated_books(page, book_id, order):
@@ -541,7 +548,7 @@ def render_downloaded_books(page, order, user_id):
         abort(404)
 
 
-def render_author_books(page, author_id, order):
+def render_author_books(page, author_id, order, seo_context=None):
     entries, __, pagination = calibre_db.fill_indexpage(page, 0,
                                                         db.Books,
                                                         db.Books.authors.any(db.Authors.id == author_id),
@@ -569,10 +576,10 @@ def render_author_books(page, author_id, order):
         other_books = services.goodreads_support.get_other_books(author_info, book_entries)
     return render_title_template('author.html', entries=entries, pagination=pagination, id=author_id,
                                  title=_("Author: %(name)s", name=author_name), author=author_info,
-                                 other_books=other_books, page="author", order=order[1])
+                                 other_books=other_books, page="author", order=order[1], **(seo_context or {}))
 
 
-def render_publisher_books(page, book_id, order):
+def render_publisher_books(page, book_id, order, seo_context=None):
     if book_id == '-1':
         entries, random, pagination = calibre_db.fill_indexpage(page, 0,
                                                                 db.Books,
@@ -606,10 +613,10 @@ def render_publisher_books(page, book_id, order):
     return render_title_template('index.html', random=random, entries=entries, pagination=pagination, id=book_id,
                                  title=_("Publisher: %(name)s", name=publisher),
                                  page="publisher",
-                                 order=order[1])
+                                 order=order[1], **(seo_context or {}))
 
 
-def render_series_books(page, book_id, order):
+def render_series_books(page, book_id, order, seo_context=None):
     if book_id == '-1':
         entries, random, pagination = calibre_db.fill_indexpage(page, 0,
                                                                 db.Books,
@@ -635,10 +642,10 @@ def render_series_books(page, book_id, order):
             abort(404)
     return render_title_template('index.html', random=random, pagination=pagination, entries=entries, id=book_id,
                                  title=_("Series: %(serie)s", serie=series_name), page="series", order=order[1],
-                                 show_annotations=True)
+                                 show_annotations=True, **(seo_context or {}))
 
 
-def render_ratings_books(page, book_id, order):
+def render_ratings_books(page, book_id, order, seo_context=None):
     if book_id == '-1':
         db_filter = coalesce(db.Ratings.rating, 0) < 1
         entries, random, pagination = calibre_db.fill_indexpage(page, 0,
@@ -662,7 +669,7 @@ def render_ratings_books(page, book_id, order):
         else:
             abort(404)
     return render_title_template('index.html', random=random, pagination=pagination, entries=entries, id=book_id,
-                                 title=title, page="ratings", order=order[1])
+                                 title=title, page="ratings", order=order[1], **(seo_context or {}))
 
 
 def render_formats_books(page, book_id, order):
@@ -694,7 +701,7 @@ def render_formats_books(page, book_id, order):
                                  order=order[1])
 
 
-def render_category_books(page, book_id, order):
+def render_category_books(page, book_id, order, seo_context=None):
     aubooks_genre = None
     if book_id == '-1':
         entries, random, pagination = calibre_db.fill_indexpage(page, 0,
@@ -736,10 +743,10 @@ def render_category_books(page, book_id, order):
             tagsname = aubooks_genre["label"]
     return render_title_template('index.html', random=random, entries=entries, pagination=pagination, id=book_id,
                                  title=_("Category: %(name)s", name=tagsname), page="category", order=order[1],
-                                 aubooks_genre=aubooks_genre, show_annotations=True)
+                                 aubooks_genre=aubooks_genre, show_annotations=True, **(seo_context or {}))
 
 
-def render_language_books(page, name, order):
+def render_language_books(page, name, order, seo_context=None):
     try:
         if name.lower() != "none":
             lang_name = isoLanguages.get_language_name(get_locale(), name)
@@ -765,7 +772,8 @@ def render_language_books(page, name, order):
                                                                 [order[0][0]],
                                                                 True, config.config_read_column)
     return render_title_template('index.html', random=random, entries=entries, pagination=pagination, id=name,
-                                 title=_("Language: %(name)s", name=lang_name), page="language", order=order[1])
+                                 title=_("Language: %(name)s", name=lang_name), page="language", order=order[1],
+                                 **(seo_context or {}))
 
 
 def render_read_books(page, are_read, as_xml=False, order=None):
@@ -849,6 +857,17 @@ def index(page):
 
 @login_required_if_no_ano
 def books_list(data, sort_param, book_id, page):
+    from .seo import METADATA_ENDPOINTS, metadata_url
+    path_parts = request.path.strip('/').split('/')
+    if data in METADATA_ENDPOINTS and len(path_parts) >= 3:
+        values = {}
+        if sort_param != "stored":
+            values["sort"] = sort_param
+        if page > 1:
+            values["page"] = page
+        friendly_url = metadata_url(data, book_id, create=True, **values)
+        if friendly_url is not None:
+            return redirect(friendly_url, code=301)
     return render_books_list(data, sort_param, book_id, page)
 
 
@@ -891,13 +910,15 @@ def category_by_slug(slug):
     aubooks_genre = {"category": cat_info["label"], "tag_id": None,
                      "label": cat_info["label"]}
 
-    category_title = "{} — {}".format(cat_info["label"], config.config_calibre_web_title)
+    from .seo import aubooks_page_title, external_url
+    category_title = aubooks_page_title("category", label=cat_info["label"])
 
     return render_title_template(
         'index.html',
         random=random, entries=entries, pagination=pagination,
         title=cat_info["label"],
         seo_title=category_title,
+        canonical_url=external_url("web.category_by_slug", slug=slug),
         page="category", order=sort_param,
         aubooks_genre=aubooks_genre,
         aubooks_category_slug=slug,
@@ -905,6 +926,46 @@ def category_by_slug(slug):
 
 
 web.add_url_rule("/category/<slug>", view_func=category_by_slug)
+
+
+_METADATA_SORT_PARAMS = frozenset({
+    'stored', 'pubnew', 'pubold', 'abc', 'zyx', 'new', 'old',
+    'authaz', 'authza', 'seriesasc', 'seriesdesc', 'hotdesc', 'hotasc',
+})
+
+
+@login_required_if_no_ano
+def metadata_books(data, slug):
+    from .seo import METADATA_ENDPOINTS, metadata_context, resolve_metadata
+    if slug in _METADATA_SORT_PARAMS:
+        return render_books_list(data, slug, 1, 1)
+    resolved = resolve_metadata(data, slug)
+    if resolved is None:
+        abort(404)
+    route, entity_key, label = resolved
+    page = request.args.get("page", 1, type=int)
+    if page < 1:
+        page = 1
+    sort_param = (request.args.get("sort") or "stored").lower()
+    return render_books_list(
+        data, sort_param, entity_key, page,
+        seo_context=metadata_context(data, route, label)
+    )
+
+
+# Friendly metadata URLs first — they win for 2-segment matches.
+web.add_url_rule("/author/<slug>", endpoint="author_books", view_func=metadata_books,
+                 defaults={"data": "author"})
+web.add_url_rule("/series/<slug>", endpoint="series_books", view_func=metadata_books,
+                 defaults={"data": "series"})
+web.add_url_rule("/genre/<slug>", endpoint="genre_books", view_func=metadata_books,
+                 defaults={"data": "category"})
+web.add_url_rule("/publisher/<slug>", endpoint="publisher_books", view_func=metadata_books,
+                 defaults={"data": "publisher"})
+web.add_url_rule("/language/<slug>", endpoint="language_books", view_func=metadata_books,
+                 defaults={"data": "language"})
+web.add_url_rule("/rating/<slug>", endpoint="rating_books", view_func=metadata_books,
+                 defaults={"data": "ratings"})
 
 # Limit number of routes to avoid redirects
 data =["rated", "discover", "unread", "read", "hot", "download", "author", "publisher", "series", "ratings", "formats",

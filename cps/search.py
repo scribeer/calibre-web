@@ -432,14 +432,16 @@ def render_search_results(term, offset=None, order=None, limit=None):
         order = [None, None]
         pagination = result_count = None
 
+    from .seo import aubooks_page_title, external_url
     return render_title_template('search.html',
-                                 searchterm=term,
+                                  searchterm=term,
                                  pagination=pagination,
                                  query=term,
                                  adv_searchterm=term,
                                  entries=entries,
-                                 result_count=result_count,
-                                 title=_("Search"),
-                                 page="search",
+                                  result_count=result_count,
+                                  title=_("Search"),
+                                  seo_title=aubooks_page_title("search", label=term),
+                                  canonical_url=external_url("search.simple_search"),
+                                  page="search",
                                  order=order[1])
-

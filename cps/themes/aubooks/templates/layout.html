@@ -26,7 +26,7 @@
     <link rel="apple-touch-icon" sizes="150x150" href="{{ url_for('static', filename='img/favicon.png') }}">
     <link rel="icon" type="image/png" sizes="150x150" href="{{ url_for('static', filename='img/favicon.png') }}">
     <link href="{{ url_for('static', filename='css/libs/bootstrap.min.css') }}" rel="stylesheet" media="screen">
-    {% block header %}{% endblock %}
+    {% block header %}{% if canonical_url %}<link rel="canonical" href="{{canonical_url}}">{% endif %}{% endblock %}
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet" media="screen">
     <link href="{{ url_for('static', filename='css/upload.css') }}" rel="stylesheet" media="screen">
     {% block theme_css %}

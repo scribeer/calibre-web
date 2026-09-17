@@ -75,6 +75,40 @@ class SeoDatabaseTest(unittest.TestCase):
         seo_db.init_db(self.session)
         seo_db.init_db(self.session)
 
+    def test_metadata_collision_uses_entity_key_suffix(self):
+        first = seo_db.ensure_metadata_route(
+            self.library_uuid, "author", 17, "Александр Иванов", self.session
+        )
+        second = seo_db.ensure_metadata_route(
+            self.library_uuid, "author", 13429, "Александр Иванов", self.session
+        )
+        self.assertEqual(first.slug, "aleksandr-ivanov")
+        self.assertEqual(second.slug, "aleksandr-ivanov-13429")
+        self.assertEqual(
+            seo_db.resolve_metadata_route(
+                self.library_uuid, "author", second.slug, self.session
+            ).entity_key,
+            "13429",
+        )
+
+    def test_metadata_mapping_survives_label_change(self):
+        original = seo_db.ensure_metadata_route(
+            self.library_uuid, "series", 42, "Старое название", self.session
+        )
+        unchanged = seo_db.ensure_metadata_route(
+            self.library_uuid, "series", 42, "Новое название", self.session
+        )
+        self.assertEqual(original.slug, unchanged.slug)
+
+    def test_metadata_entity_types_have_independent_slugs(self):
+        author = seo_db.ensure_metadata_route(
+            self.library_uuid, "author", 1, "Общее имя", self.session
+        )
+        publisher = seo_db.ensure_metadata_route(
+            self.library_uuid, "publisher", 1, "Общее имя", self.session
+        )
+        self.assertEqual(author.slug, publisher.slug)
+
 
 if __name__ == "__main__":
     unittest.main()

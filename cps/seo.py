@@ -7,13 +7,22 @@ from html.parser import HTMLParser
 from xml.sax.saxutils import escape as xml_escape
 
 from flask import Blueprint, Response, abort, redirect, stream_with_context, url_for as flask_url_for
+from flask_babel import get_locale
 
-from . import calibre_db, config, db, seo_db, ub
+from . import calibre_db, config, db, isoLanguages, seo_db, ub
 from .usermanagement import login_required_if_no_ano
 
 
 seo = Blueprint("seo", __name__)
 SITEMAP_PAGE_SIZE = 20000
+METADATA_ENDPOINTS = {
+    "author": "web.author_books",
+    "series": "web.series_books",
+    "category": "web.genre_books",
+    "publisher": "web.publisher_books",
+    "language": "web.language_books",
+    "ratings": "web.rating_books",
+}
 
 
 class _TextExtractor(HTMLParser):
@@ -89,10 +98,141 @@ def book_url(book_id, create=False, **values):
     )
 
 
+def aubooks_page_title(kind, label=None, author=None):
+    if kind == "home":
+        return "AU-Books — аудиокниги и электронные книги"
+    if kind == "book":
+        return "{} — {} | AU-Books".format(label, author)
+    if kind == "author":
+        return "{} — книги | AU-Books".format(label)
+    if kind == "series":
+        return "{} — книги серии | AU-Books".format(label)
+    if kind == "search":
+        return "Поиск: {} | AU-Books".format(label or "")
+    return "{} — книги | AU-Books".format(label)
+
+
+def _genre_details(entity_key):
+    tag_ids = [int(value) for value in str(entity_key).split("+") if value.isdigit()]
+    if not tag_ids:
+        return None
+    tags = calibre_db.session.query(db.Tags).filter(db.Tags.id.in_(tag_ids)).all()
+    if not tags:
+        return None
+
+    from .aubooks_genres import genre_for_tag
+    genre = genre_for_tag(tags[0])
+    if genre["mapped"]:
+        from .render_template import _get_aubooks_sidebar_genre_tree
+        for group in _get_aubooks_sidebar_genre_tree():
+            for candidate in group["genres"]:
+                if candidate["code"] == genre["code"]:
+                    ids = sorted(candidate["tag_ids"])
+                    return "+".join(str(tag_id) for tag_id in ids), candidate["label"]
+    return str(tags[0].id), genre["label"]
+
+
+def metadata_details(entity_type, entity_key):
+    if entity_type == "category":
+        return _genre_details(entity_key)
+    if entity_type == "language":
+        language = calibre_db.session.query(db.Languages).filter(
+            db.Languages.lang_code == str(entity_key)
+        ).first()
+        if language is None:
+            return None
+        label = isoLanguages.get_language_name(get_locale(), language.lang_code)
+        return language.lang_code, label
+
+    try:
+        entity_id = int(entity_key)
+    except (TypeError, ValueError):
+        return None
+    model = {
+        "author": db.Authors,
+        "series": db.Series,
+        "publisher": db.Publishers,
+        "ratings": db.Ratings,
+    }.get(entity_type)
+    if model is None:
+        return None
+    entity = calibre_db.session.query(model).filter(model.id == entity_id).first()
+    if entity is None:
+        return None
+    if entity_type == "ratings":
+        stars = int(entity.rating / 2)
+        label = "{} {}".format(stars, "звезда" if stars == 1 else "звезды" if stars < 5 else "звезд")
+    else:
+        label = entity.name.replace("|", ",")
+    return str(entity_id), label
+
+
+def _metadata_route(entity_type, entity_key, create=False):
+    library_uuid = _library_uuid()
+    details = metadata_details(entity_type, entity_key)
+    if not library_uuid or details is None:
+        return None, None
+    normalized_key, label = details
+    slug = seo_db.cached_metadata_slug(library_uuid, entity_type, normalized_key)
+    route = None
+    if slug is None and create:
+        session = ub.init_db_thread()
+        try:
+            seo_db.ensure_metadata_route(
+                library_uuid, entity_type, normalized_key, label, session
+            )
+        finally:
+            session.close()
+        route = seo_db.get_metadata_route(library_uuid, entity_type, normalized_key)
+    elif slug is not None:
+        route = seo_db.get_metadata_route(library_uuid, entity_type, normalized_key)
+    return route, label
+
+
+def metadata_url(entity_type, entity_key, create=False, **values):
+    endpoint = METADATA_ENDPOINTS.get(entity_type)
+    route, __ = _metadata_route(entity_type, entity_key, create=create)
+    if endpoint is None or route is None:
+        return None
+    return flask_url_for(endpoint, slug=route.slug, **values)
+
+
+def resolve_metadata(entity_type, slug):
+    library_uuid = _library_uuid()
+    if not library_uuid:
+        return None
+    route = seo_db.resolve_metadata_route(library_uuid, entity_type, slug)
+    if route is None:
+        return None
+    details = metadata_details(entity_type, route.entity_key)
+    if details is None:
+        return None
+    entity_key, label = details
+    return route, entity_key, label
+
+
+def metadata_context(entity_type, route, label):
+    endpoint = METADATA_ENDPOINTS[entity_type]
+    return {
+        "canonical_url": external_url(endpoint, slug=route.slug),
+        "seo_title": aubooks_page_title(entity_type, label=label),
+    }
+
+
 def template_url_for(endpoint, **values):
     if endpoint == "web.show_book" and "book_id" in values:
         book_id = values.pop("book_id")
         return book_url(book_id, **values)
+    if endpoint == "web.books_list" and values.get("sort_param") == "stored":
+        entity_type = values.get("data")
+        if entity_type in METADATA_ENDPOINTS and "book_id" in values:
+            metadata_values = dict(values)
+            entity_key = metadata_values.pop("book_id")
+            metadata_values.pop("data", None)
+            metadata_values.pop("sort_param", None)
+            friendly_url = metadata_url(entity_type, entity_key, create=True, **metadata_values)
+            if friendly_url is not None:
+                return friendly_url
     return flask_url_for(endpoint, **values)
 
 
@@ -131,7 +271,7 @@ def detail_context(entry, route):
     return {
         "canonical_url": canonical_url,
         "seo_description": description,
-        "seo_title": "{} — {} | {}".format(entry.title, author_label, config.config_calibre_web_title),
+        "seo_title": aubooks_page_title("book", label=entry.title, author=author_label),
         "seo_image": structured_data.get("image"),
         "seo_json_ld": structured_data,
     }
