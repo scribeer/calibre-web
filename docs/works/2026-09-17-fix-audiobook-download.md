@@ -12,7 +12,9 @@
 Route использовал hardcoded remote `opendrive:`, которого нет в production `rclone.conf`. Реальный remote называется `opendrive_content`. `rclone` завершался с ошибкой `didn't find section in config file`, после чего route выполнял `abort(500)` на строке 2154. Кроме того, unconditional `finally` удалял temp path до завершения отдачи Flask response.
 ## Изменённые файлы
 - `cps/aubooks_audio.py`
+- `cps/opendrive.py`
 - `cps/web.py`
+- `deploy/vps2/deploy-calibre-web-release.sh`
 - `tests/test_aubooks_audio_download.py`
 - `tests/test_aubooks_user_permissions.py`
 - `docs/works/2026-09-17-fix-audiobook-download.md`
@@ -24,12 +26,16 @@ Route использовал hardcoded remote `opendrive:`, которого н�
 - Cleanup запускается daemon timer после передачи управления nginx и выполняется также после client disconnect; при ошибках temp удаляется сразу.
 - Row missing, not ready, invalid path, remote missing, rclone/storage failure и database failure имеют отдельные controlled responses и технические логи.
 ## Тесты
-- Focused audiobook tests: 36 passed, 6 subtests.
-- Полный AU-Books regression набор: 405 passed, 261 subtests.
+- Focused audio/ebook tests: 63 passed, 6 subtests.
+- Полный AU-Books regression набор: 407 passed, 261 subtests.
 - `py_compile`: успешно.
 - `git diff --check`: успешно.
 - Production acceptance выявил, что Tornado WSGI выполняет `b"".join(response)` и при нескольких больших M4B может быть убит OOM killer. Поэтому body передан существующему nginx static handler через `X-Accel-Redirect`.
 - Обязательный FB2 smoke обнаружил pre-existing hardcoded `opendrive:` в ebook fallback. Он заменён на уже существующие `RCLONE_REMOTE` и `_rclone_env()`; storage architecture не менялась.
+- Production `book_id=1`: HTTP 200, `audio/mp4`, 238395628 bytes, filename `.m4b`.
+- Production `book_id=13`: HTTP 200, `audio/mp4`, 350776609 bytes, filename `.m4b`.
+- После обоих downloads temp удалён, Python RSS около 166 MB, service restart count 0.
+- Production FB2 `book_id=1`: HTTP 200, 1209531 bytes.
 ## Ограничения
 - Каждый download сначала временно сохраняет полный M4B на VPS2; постоянного хранения и Python RAM buffering нет. Cleanup delay составляет 30 секунд после передачи файла nginx.
 ## Commit
