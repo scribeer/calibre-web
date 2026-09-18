@@ -1594,6 +1594,7 @@ def _register_user(to_save, invite=None):
             if not use_user_password:
                 send_registration_mail(email, nickname, password, locale=content.locale)
     except Exception:
+        log.exception('Registration failed for user "%s"', nickname)
         ub.session.rollback()
         flash(_("Oops! An unknown error occurred. Please try again later."), category="error")
         return _render_registration_form()
