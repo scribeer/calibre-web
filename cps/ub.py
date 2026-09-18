@@ -758,7 +758,6 @@ def consume_invite(_session, invite, user_id):
         Invite.id == invite.id,
         Invite.used_at.is_(None),
         Invite.revoked_at.is_(None),
-        Invite.expires_at > now,
     ).update({
         'used_at': now,
         'used_by_user_id': user_id,
@@ -795,6 +794,7 @@ def get_invite_list(_session, limit=20):
     user_cache = {}
     result = []
     for inv in rows:
+        _normalize_invite(inv)
         if inv.used_at:
             status = 'Used'
         elif inv.revoked_at:
