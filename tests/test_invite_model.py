@@ -337,6 +337,51 @@ class TestRegistrationRegression(unittest.TestCase):
         self.assertEqual(ub.INVITE_LIFETIME_DAYS, 7)
 
 
+class TestTimezoneAwareInvite(unittest.TestCase):
+    """Verify invite functions handle timezone-aware datetimes from external sources."""
+
+    def setUp(self):
+        self.engine = create_engine('sqlite:///:memory:')
+        ub.Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+        self.session = self.Session()
+
+    def tearDown(self):
+        self.session.close()
+        self.engine.dispose()
+
+    def _create_tz_aware_invite(self):
+        raw_token = ub.create_invite(self.session)
+        self.session.commit()
+        invite = self.session.query(ub.Invite).one()
+        invite.expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        invite.created_at = datetime.now(timezone.utc)
+        self.session.commit()
+        return raw_token, invite
+
+    def test_consume_invite_with_tz_aware_expires_at(self):
+        raw_token, invite = self._create_tz_aware_invite()
+        result = ub.consume_invite(self.session, invite, user_id=99)
+        self.assertTrue(result)
+        self.assertIsNotNone(invite.used_at)
+        self.assertEqual(invite.used_by_user_id, 99)
+
+    def test_get_invite_by_token_with_tz_aware_expires_at(self):
+        raw_token, invite = self._create_tz_aware_invite()
+        found = ub.get_invite_by_token(self.session, raw_token)
+        self.assertIsNotNone(found)
+        self.assertEqual(found.id, invite.id)
+
+    def test_consume_invite_no_partial_user_on_failure(self):
+        raw_token, invite = self._create_tz_aware_invite()
+        ub.consume_invite(self.session, invite, user_id=1)
+        self.session.commit()
+        result = ub.consume_invite(self.session, invite, user_id=2)
+        self.assertFalse(result)
+        self.assertIsNone(self.session.query(ub.User).filter(
+            ub.User.id == 2).first())
+
+
 class TestPyCompile(unittest.TestCase):
     """Verify ub.py compiles without syntax errors."""
 

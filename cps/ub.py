@@ -702,12 +702,43 @@ def get_invite_by_token(_session, raw_token):
     """
     token_hash = _hash_token(raw_token)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    return _session.query(Invite).filter(
+    invite = _session.query(Invite).filter(
         Invite.token_hash == token_hash,
         Invite.used_at.is_(None),
         Invite.revoked_at.is_(None),
-        Invite.expires_at > now,
     ).one_or_none()
+    if invite is None:
+        return None
+    _normalize_invite(invite)
+    if invite.expires_at <= now:
+        return None
+    return invite
+
+
+def _strip_tz(dt):
+    """Strip timezone info from a datetime if present.
+
+    SQLite stores datetimes as strings; when read back they may or may not
+    carry tzinfo depending on how they were written.  This helper ensures
+    consistent offset-naive comparisons.
+    """
+    if dt is not None and dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
+    return dt
+
+
+def _normalize_invite(invite):
+    """Ensure all datetime fields on an Invite are offset-naive.
+
+    External tools (scripts, migrations) may write timezone-aware datetimes
+    into SQLite.  SQLAlchemy reads them back as tz-aware objects, but the
+    rest of Calibre-Web assumes offset-naive.  Normalizing after load keeps
+    all comparisons consistent.
+    """
+    for attr in ('expires_at', 'created_at', 'used_at', 'revoked_at'):
+        val = getattr(invite, attr, None)
+        if val is not None and val.tzinfo is not None:
+            setattr(invite, attr, val.replace(tzinfo=None))
 
 
 def consume_invite(_session, invite, user_id):
@@ -718,6 +749,7 @@ def consume_invite(_session, invite, user_id):
     creation and invite consumption can share one transaction.
     """
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+    _normalize_invite(invite)
     if invite.used_at is not None or invite.revoked_at is not None:
         return False
     if invite.expires_at <= now:
