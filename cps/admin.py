@@ -47,8 +47,8 @@ from sqlalchemy.sql.expression import func, or_, text
 from . import aubooks_permissions, constants, logger, helper, services, cli_param, themes
 from . import db, calibre_db, ub, web_server, config, updater_thread, gdriveutils, \
     kobo_sync_status, schedule
-from .helper import check_valid_domain, send_test_mail, reset_password, generate_password_hash, check_email, \
-    valid_email, check_username
+from .helper import check_valid_domain, send_test_mail, send_invite_mail, reset_password, \
+    generate_password_hash, check_email, valid_email, check_username
 from .embed_helper import get_calibre_binarypath
 from .gdriveutils import is_gdrive_ready, gdrive_support
 from .binary_helper import resolve_binary_path, SUPPORTED_KEPUBIFY_BINARIES, SUPPORTED_UNRAR_BINARIES
@@ -270,6 +270,39 @@ def create_registration_link():
     raw_token = ub.create_invite(ub.session, created_by_user_id=current_user.id)
     ub.session.commit()
     invite_url = url_for('web.register_invite', token=raw_token, _external=True)
+    return _render_admin(generated_invite_url=invite_url)
+
+
+@admi.route("/admin/send-invite", methods=["POST"])
+@user_login_required
+@admin_required
+def send_invite():
+    if not aubooks_permissions.is_aubooks_active():
+        abort(404)
+    invite_email = request.form.get('invite_email', '').strip()
+    if not invite_email:
+        flash(_("Please enter an email address."), category="error")
+        return _render_admin()
+    try:
+        invite_email = valid_email(invite_email)
+    except Exception as ex:
+        flash(str(ex), category="error")
+        return _render_admin()
+    raw_token = ub.create_invite(ub.session, created_by_user_id=current_user.id)
+    ub.session.commit()
+    invite_url = url_for('web.register_invite', token=raw_token, _external=True)
+    if not config.get_mail_server_configured():
+        flash(_("Email server is not configured. The link has been created — copy it manually."),
+              category="warning")
+        return _render_admin(generated_invite_url=invite_url)
+    try:
+        send_invite_mail(invite_email, invite_url)
+    except Exception as ex:
+        log.error("Failed to queue invite email: %s", ex)
+        flash(_("Failed to queue the invitation email. The link has been created — copy it manually."),
+              category="error")
+        return _render_admin(generated_invite_url=invite_url)
+    flash(_("Invitation queued for sending to %(email)s", email=invite_email), category="success")
     return _render_admin(generated_invite_url=invite_url)
 
 

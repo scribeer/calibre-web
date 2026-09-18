@@ -55,19 +55,29 @@
         <div style="margin-top: 10px;">
           <form method="POST" action="{{url_for('admin.create_registration_link')}}" style="display: inline;">
             <input type="hidden" name="csrf_token" value="{{csrf_token()}}">
-            <button type="submit" class="btn btn-default" id="create_invite">Создать ссылку регистрации</button>
+            <button type="submit" class="btn btn-default" id="create_invite">{{_('Create registration link')}}</button>
+          </form>
+        </div>
+        <div style="margin-top: 10px;">
+          <form method="POST" action="{{url_for('admin.send_invite')}}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{csrf_token()}}">
+            <div class="form-group" style="max-width: 400px; margin-bottom: 5px;">
+              <label for="invite_email">{{_('User email')}}</label>
+              <input type="email" class="form-control" id="invite_email" name="invite_email" placeholder="{{_('user@example.com')}}" required aria-required="true">
+            </div>
+            <button type="submit" class="btn btn-default" id="send_invite">{{_('Send invitation')}}</button>
           </form>
         </div>
         {% if generated_invite_url %}
         <div style="margin-top: 10px;">
-          <label for="invite_url">Ссылка регистрации:</label>
+          <label for="invite_url">{{_('Registration link')}}:</label>
           <div class="input-group" style="max-width: 100%;">
             <input type="text" class="form-control" id="invite_url" value="{{generated_invite_url}}" readonly aria-label="{{_('Registration link')}}">
             <span class="input-group-btn">
-              <button type="button" class="btn btn-default" id="copy_invite_url" aria-label="{{_('Copy registration link')}}">Копировать</button>
+              <button type="button" class="btn btn-default" id="copy_invite_url" aria-label="{{_('Copy registration link')}}">{{_('Copy')}}</button>
             </span>
           </div>
-          <p class="help-block" id="invite_copy_feedback" aria-live="polite" aria-atomic="true">Действительна 7 дней и позволяет создать один аккаунт.</p>
+          <p class="help-block" id="invite_copy_feedback" aria-live="polite" aria-atomic="true">{{_('Valid for 7 days, one-time use.')}}</p>
         </div>
         <script>
         (function(){
@@ -79,7 +89,7 @@
             btn.addEventListener('click', function(){
               if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(input.value).then(function(){
-                  feedback.textContent = 'Скопировано';
+                  feedback.textContent = '{{_("Copied")}}';
                   setTimeout(function(){ feedback.textContent = originalText; }, 2000);
                 }).catch(function(){
                   fallbackCopy();
@@ -96,10 +106,10 @@
                   ok = true;
                 } catch(e) {}
                 if (ok) {
-                  feedback.textContent = 'Скопировано';
+                  feedback.textContent = '{{_("Copied")}}';
                   setTimeout(function(){ feedback.textContent = originalText; }, 2000);
                 } else {
-                  feedback.textContent = 'Не удалось скопировать';
+                  feedback.textContent = '{{_("Could not copy")}}';
                 }
               }
             });

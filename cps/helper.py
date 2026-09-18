@@ -152,6 +152,25 @@ def send_registration_mail(e_mail, user_name, default_password, resend=False, lo
     return
 
 
+def send_invite_mail(recipient_email, invite_url):
+    """Queue an invitation email via the configured SMTP transport."""
+    subject = _('Invitation to AU-Books')
+    txt = _('You have been invited to register on AU-Books.') + "\r\n"
+    txt += _('To create an account, follow this link:') + "\r\n"
+    txt += invite_url + "\r\n"
+    txt += _('This link is valid for 7 days and can be used once.') + "\r\n\r\n"
+    txt += _('If you did not expect this email, simply ignore it.')
+    WorkerThread.add(None, TaskEmail(
+        subject=subject,
+        filepath=None,
+        attachment=None,
+        settings=config.get_mail_settings(),
+        recipient=recipient_email,
+        task_message=N_("Invitation email to %(email)s", email=recipient_email),
+        text=txt
+    ))
+
+
 def check_send_to_ereader_with_converter(formats):
     book_formats = list()
     if 'MOBI' in formats and 'EPUB' not in formats:
