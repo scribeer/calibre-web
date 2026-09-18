@@ -81,6 +81,13 @@ class TestRegisterTemplate(unittest.TestCase):
         html = read_register_template()
         self.assertIn('name="name"', html)
 
+    def test_username_has_no_placeholder(self):
+        html = read_register_template()
+        match = re.search(r'<input[^>]*name="name"[^>]*>', html)
+        self.assertIsNotNone(match, "username input not found")
+        self.assertNotIn('placeholder', match.group(0),
+                         "username field must not have a placeholder")
+
     def test_has_email_field(self):
         html = read_register_template()
         self.assertIn('name="email"', html)
