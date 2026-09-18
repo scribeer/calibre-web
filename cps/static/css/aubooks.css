@@ -659,6 +659,7 @@ body.shelf .book .meta > a:focus .title {
 
 .aubooks-catalog-book .author,
 .aubooks-catalog-book .series,
+.aubooks-catalog-book .genre,
 .aubooks-catalog-book .formats,
 .aubooks-catalog-book .rating,
 .aubooks-catalog-book .read-status {

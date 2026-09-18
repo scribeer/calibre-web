@@ -37,9 +37,54 @@ class TestAubooksHomeEagerLoading(unittest.TestCase):
             "ORM Path[Mapper[Books(books)] -> Books.data -> Mapper[Data(data)]]",
         })
 
+    @patch("cps.db.current_user", SimpleNamespace(show_detail_random=lambda: False))
+    def test_tags_are_selectin_loaded_for_all_book_lists(self):
+        query = MagicMock()
+        query.options.return_value = query
+        query.filter.return_value = query
+        query.order_by.return_value = query
+        query.offset.return_value = query
+        query.limit.return_value = query
+        query.count.return_value = 0
+        query.all.return_value = []
+
+        calibre_db = MagicMock()
+        calibre_db.config = SimpleNamespace(config_books_per_page=60)
+        calibre_db.session.query.return_value = query
+        calibre_db.common_filters.return_value = True
+        calibre_db.order_authors.return_value = []
+
+        db.CalibreDB.fill_indexpage_with_archived_books(
+            calibre_db, 1, db.Books, 60, True, [], False, False, 0,
+        )
+
+        paths = {
+            str(option.path)
+            for call in query.options.call_args_list
+            for option in call.args
+        }
+        self.assertIn(
+            "ORM Path[Mapper[Books(books)] -> Books.tags -> Mapper[Tags(tags)]]",
+            paths,
+        )
+
     def test_text_catalog_enables_card_eager_loading(self):
         source = (Path(__file__).parent.parent / "cps" / "web.py").read_text(encoding="utf-8")
         self.assertIn("load_card_relations=text_catalog", source)
+
+    def test_search_results_selectin_load_tags(self):
+        root = Path(__file__).parent.parent / "cps"
+        database = (root / "db.py").read_text(encoding="utf-8")
+        search = (root / "search.py").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "selectinload(Books.authors), selectinload(Books.tags)",
+            database,
+        )
+        self.assertIn(
+            "selectinload(db.Books.comments), selectinload(db.Books.tags)",
+            search,
+        )
 
 
 if __name__ == "__main__":

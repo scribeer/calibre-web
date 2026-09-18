@@ -187,6 +187,32 @@ class InviteRegistrationHttpTest(unittest.TestCase):
         self.assertEqual(invite.created_by_user_id, self.admin_user.id)
         self.mail_configured.assert_not_called()
 
+    def test_invite_registration_does_not_change_existing_user_locale(self):
+        self.admin_user.locale = "en"
+        self.db.commit()
+        token = self.create_invite()
+
+        self.post_invite(token)
+
+        self.db.refresh(self.admin_user)
+        self.assertEqual(self.admin_user.locale, "en")
+
+    def test_registered_user_can_change_interface_locale(self):
+        token = self.create_invite()
+        self.post_invite(token)
+        user = self.db.query(ub.User).filter(ub.User.name == "new-reader").one()
+        self.assertEqual(user.locale, "ru")
+
+        with self.app.test_request_context("/me", method="POST", data={
+            "email": user.email,
+            "locale": "en",
+            "default_language": "all",
+        }), patch.object(self.web_module, "current_user", user):
+            self.web_module.change_profile(False, {}, None, [], [])
+
+        self.db.refresh(user)
+        self.assertEqual(user.locale, "en")
+
     def test_configured_default_role_is_retained_exactly(self):
         self.config.config_default_role = constants.ROLE_VIEWER
         token = self.create_invite()

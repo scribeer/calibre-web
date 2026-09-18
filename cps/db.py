@@ -908,6 +908,7 @@ class CalibreDB:
             query = self.generate_linked_query(config_read_column, database)
         else:
             query = self.session.query(database)
+        query = query.options(selectinload(Books.tags))
         if load_comments:
             query = query.options(selectinload(Books.comments))
         if load_card_relations:
@@ -1042,8 +1043,8 @@ class CalibreDB:
         base_query = self.generate_linked_query(config.config_read_column, Books)
         base_query = base_query.filter(self.common_filters(True))
 
-        # Apply eager loading for authors to avoid N+1 queries
-        base_query = base_query.options(selectinload(Books.authors))
+        # Apply eager loading for card relationships to avoid N+1 queries.
+        base_query = base_query.options(selectinload(Books.authors), selectinload(Books.tags))
 
         if len(join) == 6:
             base_query = base_query.outerjoin(join[0], join[1]).outerjoin(join[2]).outerjoin(join[3], join[4]).outerjoin(join[5])

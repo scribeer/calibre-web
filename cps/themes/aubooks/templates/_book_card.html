@@ -27,6 +27,11 @@
     <span>({{book.series_index|formatfloat(2)}})</span>
   </p>
   {% endif %}
+  {% if book.tags|length > 0 %}
+  <p class="genre"><span class="aubooks-meta-label">Жанр:</span>
+    {% for genre in book.tags %}<a href="{{url_for('web.books_list', data='category', sort_param='stored', book_id=genre.id)}}">{{genre.name}}</a>{% if not loop.last %}<span>, </span>{% endif %}{% endfor %}
+  </p>
+  {% endif %}
   {% if book.ratings|length > 0 or (show_read_status and entry[2] == true) %}
   <div class="aubooks-book-metadata">
     {% if book.ratings|length > 0 %}

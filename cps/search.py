@@ -365,7 +365,7 @@ def render_adv_search_results(term, offset=None, order=None, limit=None):
             log.debug_or_exception(ex)
             flash(_("Error on search for custom columns, please restart the application"), category="error")
 
-    q = q.options(selectinload(db.Books.comments)).order_by(*sort).all()
+    q = q.options(selectinload(db.Books.comments), selectinload(db.Books.tags)).order_by(*sort).all()
     flask_session['query'] = json.dumps(term)
     ub.store_combo_ids(q)
     result_count = len(q)
