@@ -37,12 +37,9 @@
           <input type="number" min="0" max="999" class="form-control" name="config_authors_max" id="config_authors_max" value="{% if conf.config_authors_max != None %}{{ conf.config_authors_max }}{% endif %}" autocomplete="off">
         </div>
         <div class="form-group">
-        <label for="config_theme">{{_('Theme')}}</label>
-            <select name="config_theme" id="config_theme" class="form-control">
-                {% for theme in g.themes %}
-                <option value="{{ theme['id'] }}" {% if conf.config_theme == theme['id'] %}selected{% endif %}>{{ _(theme['label']) }}</option>
-                {% endfor %}
-            </select>
+        <label>{{_('Theme')}}</label>
+            <p class="form-control-static">AU-Books</p>
+            <input type="hidden" name="config_theme" value="3">
         </div>
         <div class="form-group">
           <label for="config_columns_to_ignore">{{_('Regular Expression for Ignoring Columns')}}</label>

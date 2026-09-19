@@ -1,68 +1,10 @@
-/* AU-Books theme: CSS custom properties, light/dark palettes, and Bootstrap overrides. */
+/* AU-Books theme: CSS custom properties (dark only) and Bootstrap overrides. */
 
 /* ==========================================================================
-   1. CSS Custom Properties — Light palette (default)
+   1. CSS Custom Properties — Dark palette (AU-Books only theme)
    ========================================================================== */
 
 :root {
-  /* Page & surfaces */
-  --aubooks-bg: #f2f2f2;
-  --aubooks-surface: #ffffff;
-  --aubooks-surface-raised: #f8f8f8;
-  --aubooks-surface-hover: #f5f5f5;
-
-  /* Text */
-  --aubooks-text: #333333;
-  --aubooks-text-muted: #595959;
-  --aubooks-text-subtle: #777777;
-
-  /* Links */
-  --aubooks-link: #1976d2;
-  --aubooks-link-hover: #1565c0;
-  --aubooks-link-muted: #595959;
-
-  /* Borders */
-  --aubooks-border: #dddddd;
-  --aubooks-border-strong: #cccccc;
-
-  /* Focus */
-  --aubooks-focus: #111111;
-  --aubooks-focus-ring: #ffd600;
-
-  /* Accent */
-  --aubooks-accent: #337ab7;
-  --aubooks-on-accent: #ffffff;
-
-  /* Controls */
-  --aubooks-control-bg: #ffffff;
-  --aubooks-placeholder: #999999;
-  --aubooks-disabled-text: #777777;
-
-  /* Semantic */
-  --aubooks-success: #5cb85c;
-  --aubooks-success-surface: #dff0d8;
-  --aubooks-success-text: #3c763d;
-  --aubooks-warning: #f0ad4e;
-  --aubooks-warning-surface: #fcf8e3;
-  --aubooks-warning-text: #8a6d3b;
-  --aubooks-danger: #d9534f;
-  --aubooks-danger-surface: #f2dede;
-  --aubooks-danger-text: #a94442;
-  --aubooks-info: #5bc0de;
-  --aubooks-info-surface: #d9edf7;
-  --aubooks-info-text: #31708f;
-
-  /* Drag state */
-  --aubooks-drag-bg: #e6e6e6;
-
-  color-scheme: light;
-}
-
-/* ==========================================================================
-   2. Dark palette
-   ========================================================================== */
-
-[data-theme="dark"] {
   /* Page & surfaces */
   --aubooks-bg: #000000;
   --aubooks-surface: #000000;
@@ -116,55 +58,12 @@
   color-scheme: dark;
 }
 
-/* No-JS system dark: applies when data-theme attribute is absent */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    --aubooks-bg: #000000;
-    --aubooks-surface: #000000;
-    --aubooks-surface-raised: #000000;
-    --aubooks-surface-hover: #161616;
-    --aubooks-text: #e0e0e0;
-    --aubooks-text-muted: #b8b8b8;
-    --aubooks-text-subtle: #9c9c9c;
-    --aubooks-link: #64b5f6;
-    --aubooks-link-hover: #90caf9;
-    --aubooks-link-muted: #b8b8b8;
-    --aubooks-border: #333333;
-    --aubooks-border-strong: #444444;
-    --aubooks-focus: #e0e0e0;
-    --aubooks-focus-ring: #ffd600;
-    --aubooks-accent: #5ba3d9;
-    --aubooks-on-accent: #ffffff;
-    --aubooks-control-bg: #000000;
-    --aubooks-placeholder: #a0a0a0;
-    --aubooks-disabled-text: #777777;
-    --aubooks-success: #6fbf73;
-    --aubooks-success-surface: #1a2e1a;
-    --aubooks-success-text: #8fd48f;
-    --aubooks-warning: #e0a84e;
-    --aubooks-warning-surface: #2e2a1a;
-    --aubooks-warning-text: #d4b96a;
-    --aubooks-danger: #d46a6a;
-    --aubooks-danger-surface: #2e1a1a;
-    --aubooks-danger-text: #e88888;
-    --aubooks-info: #5ba8c4;
-    --aubooks-info-surface: #1a2a2e;
-    --aubooks-info-text: #8ac4d8;
-    --aubooks-drag-bg: #161616;
-    color-scheme: dark;
-  }
-}
-
 /* ==========================================================================
    3. Foundation: page, body, text
    ========================================================================== */
 
 html {
   background-color: var(--aubooks-bg);
-  color-scheme: light;
-}
-
-[data-theme="dark"] html {
   color-scheme: dark;
 }
 
@@ -691,6 +590,49 @@ body.shelf .book .meta > a:focus .title {
 
 .aubooks-book-annotation > :last-child {
   margin-bottom: 0;
+}
+
+/* ==========================================================================
+   17a. Book card thumbnail layout
+   ========================================================================== */
+
+.aubooks-cbook-layout {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.aubooks-cbook-thumb {
+  flex-shrink: 0;
+  display: block;
+  width: 160px;
+  height: 200px;
+  overflow: hidden;
+  background: var(--aubooks-surface);
+}
+
+.aubooks-cbook-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border: 1px solid var(--aubooks-border);
+}
+
+.aubooks-cbook-info {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 480px) {
+  .aubooks-cbook-layout {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .aubooks-cbook-thumb {
+    width: 120px;
+    height: 150px;
+  }
 }
 
 /* ==========================================================================
