@@ -58,7 +58,7 @@ max_wheel = int(sys.argv[4])
 max_metadata = int(sys.argv[5])
 max_helper = int(sys.argv[6])
 
-readonly ALLOWED_NAMES = set(["SHA256SUMS", "artifact-manifest.json", "deploy-request.json", "deploy-calibre-web-release.sh", "sync-audio-db.sh"])
+readonly ALLOWED_NAMES = {"SHA256SUMS", "artifact-manifest.json", "deploy-request.json", "deploy-calibre-web-release.sh", "sync-audio-db.sh"}
 ALLOWED_EXTS = {".whl"}
 
 def validate_member(member):
