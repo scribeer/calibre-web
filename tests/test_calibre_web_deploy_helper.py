@@ -1002,7 +1002,7 @@ class DispatcherUploadTest(unittest.TestCase):
         self.assertIn("upload {} OK".format(VALID_SHA).encode(), result.stdout)
         bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
         self.assertTrue(bundle.is_dir())
-        self.assertEqual(len(list(bundle.iterdir())), 5)
+        self.assertEqual(len(list(bundle.iterdir())), 6)
 
     def test_upload_sets_helper_executable(self):
         tar_data = self.make_tar({
@@ -1011,6 +1011,7 @@ class DispatcherUploadTest(unittest.TestCase):
             "artifact-manifest.json": "{}",
             "deploy-request.json": "{}",
             "deploy-calibre-web-release.sh": "#!/usr/bin/env bash\necho ok\n",
+            "sync-audio-db.sh": "#!/usr/bin/env bash\necho sync\n",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -1092,6 +1093,9 @@ class DispatcherUploadTest(unittest.TestCase):
             info = tarfile.TarInfo(name="deploy-calibre-web-release.sh")
             info.size = 4
             tar.addfile(info, io.BytesIO(b"exec"))
+            info = tarfile.TarInfo(name="sync-audio-db.sh")
+            info.size = 4
+            tar.addfile(info, io.BytesIO(b"sync"))
         result = self.run_dispatcher("upload {}".format(VALID_SHA), buf.getvalue())
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"duplicate filename", result.stderr)
@@ -1111,11 +1115,15 @@ class DispatcherUploadTest(unittest.TestCase):
         tar_data = self.make_tar({
             self.wheel_name: b"wheel data",
             "SHA256SUMS": b"s",
+            "artifact-manifest.json": b"{}",
+            "deploy-request.json": b"{}",
+            "deploy-calibre-web-release.sh": b"#!/usr/bin/env bash\n",
             "sync-audio-db.sh": b"#!/usr/bin/env bash\necho sync\n",
+            "extra-file.txt": b"extra",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn(b"expected exactly 5", result.stderr)
+        self.assertIn(b"expected exactly 6", result.stderr)
 
     def test_upload_rejects_unexpected_file(self):
         tar_data = self.make_tar({
@@ -1129,7 +1137,7 @@ class DispatcherUploadTest(unittest.TestCase):
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn(b"expected exactly 5", result.stderr)
+        self.assertIn(b"expected exactly 6", result.stderr)
 
     def test_upload_rejects_empty_archive(self):
         buf = io.BytesIO()
@@ -1145,6 +1153,7 @@ class DispatcherUploadTest(unittest.TestCase):
             "artifact-manifest.json": b"{}",
             "deploy-request.json": b"{}",
             "deploy-calibre-web-release.sh": b"#!/usr/bin/env bash\n",
+            "sync-audio-db.sh": b"#!/usr/bin/env bash\necho sync\n",
         })
         result1 = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertEqual(result1.returncode, 0, result1.stderr)
