@@ -143,10 +143,16 @@ if not re.fullmatch(r"[0-9a-f]{64}", wheel_sha256):
     raise SystemExit("manifest wheel SHA-256 is invalid")
 helper_filename = manifest.get("helper_filename", "")
 helper_sha256 = manifest.get("helper_sha256", "")
+sync_sha256 = manifest.get("sync_sha256", "")
 if helper_filename != "deploy-calibre-web-release.sh":
     raise SystemExit("manifest helper filename is invalid")
 if not re.fullmatch(r"[0-9a-f]{64}", helper_sha256):
     raise SystemExit("manifest helper SHA-256 is invalid")
+sync_filename = manifest.get("sync_filename", "")
+if sync_filename != "sync-audio-db.sh":
+    raise SystemExit("manifest sync filename is invalid")
+if not re.fullmatch(r"[0-9a-f]{64}", manifest.get("sync_sha256", "")):
+    raise SystemExit("manifest sync SHA-256 is invalid")
 if request.get("commit_sha") != commit_sha:
     raise SystemExit("deploy request commit SHA mismatch")
 if request.get("wheel_filename") != wheel_filename:
@@ -167,19 +173,24 @@ print(wheel_sha256)
 print(public_url)
 print(helper_filename)
 print(helper_sha256)
+print(sync_filename)
+print(sync_sha256)
 PY
   )" || fail 'bundle manifest validation failed'
   mapfile -t manifest_values <<< "$manifest_output"
-  [[ "${#manifest_values[@]}" -eq 5 ]] || fail 'bundle manifest output is incomplete'
-  WHEEL_FILENAME="${manifest_values[0]}"
-  WHEEL_SHA256="${manifest_values[1]}"
-  PUBLIC_URL="${manifest_values[2]}"
-  HELPER_FILENAME="${manifest_values[3]}"
-  HELPER_SHA256="${manifest_values[4]}"
+[[ "${#manifest_values[@]}" -eq 7 ]] || fail 'bundle manifest output is incomplete'
+ WHEEL_FILENAME="${manifest_values[0]}"
+ WHEEL_SHA256="${manifest_values[1]}"
+ PUBLIC_URL="${manifest_values[2]}"
+ HELPER_FILENAME="${manifest_values[3]}"
+ HELPER_SHA256="${manifest_values[4]}"
+ SYNC_FILENAME="${manifest_values[5]}"
+ SYNC_SHA256="${manifest_values[6]}"
 
   [[ -f "$BUNDLE_DIR/$WHEEL_FILENAME" && ! -L "$BUNDLE_DIR/$WHEEL_FILENAME" ]] || fail 'manifest wheel is missing or unsafe'
   [[ -f "$BUNDLE_DIR/$HELPER_FILENAME" && ! -L "$BUNDLE_DIR/$HELPER_FILENAME" ]] || fail 'manifest helper is missing or unsafe'
-  python3 - "$BUNDLE_DIR/$WHEEL_FILENAME" "$BUNDLE_DIR/$HELPER_FILENAME" "$BUNDLE_DIR/SHA256SUMS" "$WHEEL_FILENAME" "$WHEEL_SHA256" "$HELPER_FILENAME" "$HELPER_SHA256" <<'PY'
+  [[ -f "$BUNDLE_DIR/$SYNC_FILENAME" && ! -L "$BUNDLE_DIR/$SYNC_FILENAME" ]] || fail 'manifest sync is missing or unsafe'
+  python3 - "$BUNDLE_DIR/$WHEEL_FILENAME" "$BUNDLE_DIR/$HELPER_FILENAME" "$BUNDLE_DIR/SHA256SUMS" "$WHEEL_FILENAME" "$WHEEL_SHA256" "$HELPER_FILENAME" "$HELPER_SHA256" "$SYNC_FILENAME" "$SYNC_SHA256" <<'PY'
 import hashlib
 import pathlib
 import sys
@@ -191,8 +202,10 @@ expected_wheel_name = sys.argv[4]
 expected_wheel_sha = sys.argv[5]
 expected_helper_name = sys.argv[6]
 expected_helper_sha = sys.argv[7]
+expected_sync_name = sys.argv[8]
+expected_sync_sha = sys.argv[9]
 
-allowed_names = {expected_wheel_name, expected_helper_name}
+allowed_names = {expected_wheel_name, expected_helper_name, expected_sync_name}
 entries = {}
 for line in sums:
     parts = line.split()
@@ -208,12 +221,14 @@ for line in sums:
         raise SystemExit("SHA256SUMS has malformed checksum for {}".format(name))
     entries[name] = digest
 
-if len(entries) != 2:
-    raise SystemExit("SHA256SUMS must contain exactly 2 entries, found {}".format(len(entries)))
+if len(entries) != 3:
+    raise SystemExit("SHA256SUMS must contain exactly 3 entries, found {}".format(len(entries)))
 if entries[expected_wheel_name] != expected_wheel_sha:
     raise SystemExit("SHA256SUMS wheel checksum does not match manifest")
 if entries[expected_helper_name] != expected_helper_sha:
     raise SystemExit("SHA256SUMS helper checksum does not match manifest")
+if entries[expected_sync_name] != expected_sync_sha:
+    raise SystemExit("SHA256SUMS sync checksum does not match manifest")
 
 wheel_digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
 if wheel_digest != expected_wheel_sha:
@@ -221,6 +236,10 @@ if wheel_digest != expected_wheel_sha:
 helper_digest = hashlib.sha256(helper.read_bytes()).hexdigest()
 if helper_digest != expected_helper_sha:
     raise SystemExit("helper file checksum mismatch")
+sync_path = pathlib.Path(sys.argv[1]).parent / expected_sync_name
+sync_digest = hashlib.sha256(sync_path.read_bytes()).hexdigest()
+if sync_digest != expected_sync_sha:
+    raise SystemExit("sync file checksum mismatch")
 PY
   (
     cd "$BUNDLE_DIR"
@@ -627,6 +646,20 @@ health_check() {
   [[ "$public_ok" -eq 1 && "$login_ok" -eq 1 ]]
 }
 
+install_audio_sync() {
+  local sync_src="$BUNDLE_DIR/sync-audio-db.sh"
+  local sync_dst="/home/foroforo/bin/sync-audio-db.sh"
+  local cron_file="/etc/cron.d/aubooks-audio-sync"
+  local cron_content='* * * * * root AUBOOKS_SSH_HOST=5.61.57.72 /home/foroforo/bin/sync-audio-db.sh'
+
+  [[ -f "$sync_src" && ! -L "$sync_src" ]] || fail 'sync-audio-db.sh is missing from bundle'
+  install -m 0755 -o foroforo -g foroforo "$sync_src" "$sync_dst"
+  printf '%s\n' "$cron_content" > "$cron_file"
+  chmod 0644 "$cron_file"
+  chown root:root "$cron_file"
+  printf 'audio sync installed: %s + %s\n' "$sync_dst" "$cron_file"
+}
+
 write_deployed_manifest() {
   python3 - "$BUNDLE_DIR/artifact-manifest.json" "$RELEASE_DIR/deployed-manifest.json" <<'PY'
 import json
@@ -818,6 +851,7 @@ switch_current_release
 allow_service_start
 start_service
 health_check
+install_audio_sync
 write_deployed_manifest
 DEPLOY_STARTED=0
 DESTRUCTIVE_PHASE=0

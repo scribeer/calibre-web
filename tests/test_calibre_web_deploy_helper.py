@@ -98,6 +98,9 @@ class DeployHelperTest(unittest.TestCase):
     def write_bundle(self, manifest_sha=VALID_SHA):
         digest = hashlib.sha256(self.wheel.read_bytes()).hexdigest()
         helper_digest = hashlib.sha256(self.helper.read_bytes()).hexdigest()
+        sync_name = "sync-audio-db.sh"
+        sync_content = "#!/usr/bin/env bash\necho sync\n"
+        sync_digest = hashlib.sha256(sync_content.encode("utf-8")).hexdigest()
         manifest = {
             "repository": "scribeer/calibre-web",
             "commit_sha": manifest_sha,
@@ -108,6 +111,8 @@ class DeployHelperTest(unittest.TestCase):
             "wheel_sha256": digest,
             "helper_filename": self.helper_name,
             "helper_sha256": helper_digest,
+            "sync_filename": sync_name,
+            "sync_sha256": sync_digest,
             "package_version": "0.6.28b0",
             "python_version": "3.12.14",
             "build_time_utc": "2026-09-13T00:00:00Z",
@@ -126,9 +131,10 @@ class DeployHelperTest(unittest.TestCase):
         (self.bundle / "artifact-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         (self.bundle / "deploy-request.json").write_text(json.dumps(request), encoding="utf-8")
         (self.bundle / "SHA256SUMS").write_text(
-            "{}  {}\n{}  {}\n".format(digest, self.wheel_name, helper_digest, self.helper_name),
+            "{}  {}\n{}  {}\n{}  {}\n".format(digest, self.wheel_name, helper_digest, self.helper_name, sync_digest, sync_name),
             encoding="ascii",
         )
+        (self.bundle / sync_name).write_text(sync_content, encoding="utf-8")
 
     def write_fake_commands(self):
         fake_id = self.fake_bin / "id"
@@ -838,13 +844,18 @@ class DeployHelperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_helper_checksum_missing_fails(self):
-        sums = "{}  {}\n".format(
-            hashlib.sha256(self.wheel.read_bytes()).hexdigest(), self.wheel_name
+        digest = hashlib.sha256(self.wheel.read_bytes()).hexdigest()
+        sync_name = "sync-audio-db.sh"
+        sync_content = "#!/usr/bin/env bash\necho sync\n"
+        sync_digest = hashlib.sha256(sync_content.encode("utf-8")).hexdigest()
+        sums = "{}  {}\n{}  {}\n".format(
+            digest, self.wheel_name,
+            sync_digest, sync_name,
         )
         (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
         result = self.run_dry()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("exactly 2 entries", result.stderr)
+        self.assertIn("exactly 3 entries", result.stderr)
 
     def test_duplicate_helper_in_sha256sums_fails(self):
         digest = hashlib.sha256(self.wheel.read_bytes()).hexdigest()
@@ -873,8 +884,12 @@ class DeployHelperTest(unittest.TestCase):
 
     def test_wrong_helper_checksum_fails(self):
         digest = hashlib.sha256(self.wheel.read_bytes()).hexdigest()
-        sums = "{}  {}\n{}  {}\n".format(
+        sync_name = "sync-audio-db.sh"
+        sync_content = "#!/usr/bin/env bash\necho sync\n"
+        sync_digest = hashlib.sha256(sync_content.encode("utf-8")).hexdigest()
+        sums = "{}  {}\n{}  {}\n{}  {}\n".format(
             digest, self.wheel_name,
+            sync_digest, sync_name,
             "a" * 64, self.helper_name,
         )
         (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
@@ -884,9 +899,13 @@ class DeployHelperTest(unittest.TestCase):
 
     def test_wrong_wheel_checksum_fails(self):
         helper_digest = hashlib.sha256(self.helper.read_bytes()).hexdigest()
-        sums = "{}  {}\n{}  {}\n".format(
+        sync_name = "sync-audio-db.sh"
+        sync_content = "#!/usr/bin/env bash\necho sync\n"
+        sync_digest = hashlib.sha256(sync_content.encode("utf-8")).hexdigest()
+        sums = "{}  {}\n{}  {}\n{}  {}\n".format(
             "b" * 64, self.wheel_name,
             helper_digest, self.helper_name,
+            sync_digest, sync_name,
         )
         (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
         result = self.run_dry()
@@ -976,6 +995,7 @@ class DispatcherUploadTest(unittest.TestCase):
             "artifact-manifest.json": "{}",
             "deploy-request.json": "{}",
             "deploy-calibre-web-release.sh": "#!/usr/bin/env bash\n",
+            "sync-audio-db.sh": "#!/usr/bin/env bash\necho sync\n",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -1091,6 +1111,7 @@ class DispatcherUploadTest(unittest.TestCase):
         tar_data = self.make_tar({
             self.wheel_name: b"wheel data",
             "SHA256SUMS": b"s",
+            "sync-audio-db.sh": b"#!/usr/bin/env bash\necho sync\n",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertNotEqual(result.returncode, 0)
@@ -1103,6 +1124,7 @@ class DispatcherUploadTest(unittest.TestCase):
             "artifact-manifest.json": b"{}",
             "deploy-request.json": b"{}",
             "deploy-calibre-web-release.sh": b"#!/usr/bin/env bash\n",
+            "sync-audio-db.sh": b"#!/usr/bin/env bash\necho sync\n",
             "evil.txt": b"malicious",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)

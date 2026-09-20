@@ -156,7 +156,7 @@ jobs:
           from zipfile import ZipFile
 
           artifact_dir = Path(os.environ["ARTIFACT_DIR"])
-          expected_files = {"SHA256SUMS", "artifact-manifest.json", "deploy-calibre-web-release.sh"}
+          expected_files = {"SHA256SUMS", "artifact-manifest.json", "deploy-calibre-web-release.sh", "sync-audio-db.sh"}
           missing = sorted(name for name in expected_files if not (artifact_dir / name).is_file())
           if missing:
               raise SystemExit("Artifact files missing: {}".format(", ".join(missing)))
@@ -245,6 +245,7 @@ jobs:
           mkdir -p "$BUNDLE_DIR"
           cp "$ARTIFACT_DIR/$WHEEL_FILENAME" "$ARTIFACT_DIR/SHA256SUMS" "$ARTIFACT_DIR/artifact-manifest.json" "$BUNDLE_DIR/"
           cp "$ARTIFACT_DIR/deploy-calibre-web-release.sh" "$BUNDLE_DIR/deploy-calibre-web-release.sh"
+          cp "$ARTIFACT_DIR/sync-audio-db.sh" "$BUNDLE_DIR/sync-audio-db.sh"
           python - <<'PY'
           import json
           import os
@@ -325,11 +326,11 @@ jobs:
             -o StrictHostKeyChecking=yes
             -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts"
           )
-          for f in "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json deploy-calibre-web-release.sh; do
+          for f in "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json deploy-calibre-web-release.sh sync-audio-db.sh; do
             [[ -f "$BUNDLE_DIR/$f" ]] || { printf 'bundle file missing: %s\n' "$f" >&2; exit 1; }
           done
           tar -C "$BUNDLE_DIR" -cf - \
-            "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json deploy-calibre-web-release.sh \
+            "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json deploy-calibre-web-release.sh sync-audio-db.sh \
           | ssh "${ssh_options[@]}" -- "$target" "upload $COMMIT_SHA"
       - name: Invoke deploy via forced-command protocol
         env:
