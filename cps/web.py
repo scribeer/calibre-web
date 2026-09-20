@@ -1413,6 +1413,13 @@ def get_robots():
     return response
 
 
+@web.route("/help")
+def help_page():
+    if get_active_theme_identifier() != "aubooks":
+        abort(404)
+    return render_title_template('help.html', title=_("Помощь по сайту"), page="help")
+
+
 @web.route("/show/<int:book_id>/<book_format>", defaults={'anyname': 'None'})
 @web.route("/show/<int:book_id>/<book_format>/<anyname>")
 @login_required_if_no_ano

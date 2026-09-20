@@ -1774,3 +1774,45 @@ html[data-theme="dark"],
 [data-theme="dark"] ::-webkit-scrollbar-corner {
   background: var(--aubooks-bg);
 }
+
+/* ==========================================================================
+   27. Help page
+   ========================================================================== */
+
+.aubooks-help {
+  max-width: 68ch;
+}
+
+.aubooks-help h1 {
+  margin: 0 0 1.5rem;
+}
+
+.aubooks-help h2 {
+  margin: 2.5rem 0 0.75rem;
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.aubooks-help h2 + p,
+.aubooks-help h2 + ol,
+.aubooks-help h2 + ul {
+  margin-top: 0;
+}
+
+.aubooks-help p,
+.aubooks-help li {
+  line-height: 1.55;
+}
+
+.aubooks-help ol,
+.aubooks-help ul {
+  padding-left: 1.4em;
+}
+
+.aubooks-help li {
+  margin-top: 0.3rem;
+}
+
+.aubooks-help li ul {
+  margin-top: 0.3rem;
+}

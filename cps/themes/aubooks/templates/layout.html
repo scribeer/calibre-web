@@ -123,6 +123,7 @@
         <aside class="col-sm-2 aubooks-sidebar" aria-label="{{_('Library navigation')}}">
           <nav class="navigation" aria-label="{{_('Browse')}}">
             <ul class="list-unstyled" id="scnd-nav" intent in-standard-append="nav.navigation" in-mobile-after="#main-nav" in-mobile-class="nav navbar-nav">
+              <li id="nav_help"{% if page == 'help' %} class="active"{% endif %}><a href="{{url_for('web.help_page')}}"{% if page == 'help' %} aria-current="page"{% endif %}><span class="glyphicon glyphicon-question-sign" aria-hidden="true"></span> Помощь</a></li>
               {% if current_user.is_authenticated or g.allow_anonymous %}
                 <li class="nav-head hidden-xs public-shelves">{{_('Shelves')}}</li>
                 {% for shelf in g.shelves_access %}
