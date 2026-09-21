@@ -28,6 +28,9 @@ class DeployHelperTest(unittest.TestCase):
         self.bundle = self.base / "bundle"
         self.fake_bin = self.base / "bin"
         self.command_log = self.base / "commands.log"
+        self.audio_sync_dst = self.base / "home" / "foroforo" / "bin" / "sync-audio-db.sh"
+        self.audio_sync_cron = self.base / "etc" / "cron.d" / "aubooks-audio-sync"
+        self.bash_env = self.base / "bash-env.sh"
         self.previous = self.root / "releases" / ("b" * 40)
 
         for path in (
@@ -38,8 +41,23 @@ class DeployHelperTest(unittest.TestCase):
             self.previous,
             self.bundle,
             self.fake_bin,
+            self.audio_sync_dst.parent,
+            self.audio_sync_cron.parent,
         ):
             path.mkdir(parents=True, exist_ok=True)
+        self.bash_env.write_text(
+            "if [[ ${AUBOOKS_TEST_PATH_REWRITE:-0} == 1 ]]; then\n"
+            "  set -T\n"
+            "  __aubooks_rewrite_deploy_paths() {\n"
+            "    if [[ ${FUNCNAME[1]:-} == install_audio_sync ]]; then\n"
+            "      [[ ${sync_dst:-} != /home/foroforo/bin/sync-audio-db.sh ]] || sync_dst=\"$AUBOOKS_TEST_SYNC_DST\"\n"
+            "      [[ ${cron_file:-} != /etc/cron.d/aubooks-audio-sync ]] || cron_file=\"$AUBOOKS_TEST_CRON_FILE\"\n"
+            "    fi\n"
+            "  }\n"
+            "  trap __aubooks_rewrite_deploy_paths DEBUG\n"
+            "fi\n",
+            encoding="ascii",
+        )
         (self.root / "current").symlink_to(self.previous)
 
         self.app_db = self.root / "config" / "app.db"
@@ -90,6 +108,10 @@ class DeployHelperTest(unittest.TestCase):
             "GDRIVE_DB": str(self.gdrive_db),
             "METADATA_DB": str(self.metadata_db),
             "PATH": str(self.fake_bin) + os.pathsep + self.env["PATH"],
+            "AUBOOKS_TEST_PATH_REWRITE": "1",
+            "AUBOOKS_TEST_SYNC_DST": str(self.audio_sync_dst),
+            "AUBOOKS_TEST_CRON_FILE": str(self.audio_sync_cron),
+            "BASH_ENV": str(self.bash_env),
         })
 
     def tearDown(self):
@@ -248,6 +270,20 @@ class DeployHelperTest(unittest.TestCase):
             "fi\n"
             "shift 2\n"
             "[[ ${1:-} == -- ]] && shift\n"
+            "if [[ ${1:-} == python3 && ${2:-} == -m && ${3:-} == venv ]]; then\n"
+            "  venv=\"${@: -1}\"\n"
+            "  mkdir -p \"$venv/bin\"\n"
+            "  cat > \"$venv/bin/python\" <<'EOF'\n"
+            "#!/usr/bin/env bash\n"
+            "if [[ ${1:-} == -c ]]; then\n"
+            "  venv_dir=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"\n"
+            "  printf '%s\\n' \"$venv_dir/lib/python3.10/site-packages/calibreweb/cps/static\"\n"
+            "fi\n"
+            "exit 0\n"
+            "EOF\n"
+            "  /usr/bin/chmod +x \"$venv/bin/python\"\n"
+            "  exit 0\n"
+            "fi\n"
             "if [[ ${1:-} == python3 && ${2:-} == - && ${3:-} == */config/app.db ]]; then "
             "exec \"$@\"; fi\n"
             "exit 0\n",
