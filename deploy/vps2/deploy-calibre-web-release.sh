@@ -687,6 +687,7 @@ install_audio_sync() {
 }
 
 install_tts_processor() {
+  install -d -m 0755 -o root -g root "${TTS_PROCESSOR_DEST%/*}"
   python3 - "$BUNDLE_DIR/artifact-manifest.json" "$TTS_PROCESSOR_DEST" "$COMMIT_SHA" <<'PY'
 import base64
 import hashlib
