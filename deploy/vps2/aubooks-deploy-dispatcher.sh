@@ -58,7 +58,7 @@ max_wheel = int(sys.argv[4])
 max_metadata = int(sys.argv[5])
 max_helper = int(sys.argv[6])
 
-ALLOWED_NAMES = {"SHA256SUMS", "artifact-manifest.json", "deploy-request.json", "deploy-calibre-web-release.sh", "sync-audio-db.sh", "tts_processor.py"}
+ALLOWED_NAMES = {"SHA256SUMS", "artifact-manifest.json", "deploy-request.json", "deploy-calibre-web-release.sh", "sync-audio-db.sh"}
 ALLOWED_EXTS = {".whl"}
 
 def validate_member(member):
@@ -79,8 +79,8 @@ def validate_member(member):
 
 with tarfile.open(archive_path, "r:*") as tar:
     members = tar.getmembers()
-    if len(members) != 7:
-        raise SystemExit("expected exactly 7 archive members, found {}".format(len(members)))
+    if len(members) != 6:
+        raise SystemExit("expected exactly 6 archive members, found {}".format(len(members)))
 
     seen = set()
     for member in members:

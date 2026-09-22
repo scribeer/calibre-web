@@ -122,6 +122,8 @@ validate_bundle() {
   [[ -f "$sums" && ! -L "$sums" ]] || fail 'SHA256SUMS is missing or unsafe'
 
   manifest_output="$(python3 - "$manifest" "$request" "$COMMIT_SHA" <<'PY'
+import base64
+import hashlib
 import json
 import re
 import sys
@@ -152,10 +154,21 @@ if not re.fullmatch(r"[0-9a-f]{64}", helper_sha256):
     raise SystemExit("manifest helper SHA-256 is invalid")
 tts_filename = manifest.get("tts_filename", "")
 tts_sha256 = manifest.get("tts_sha256", "")
+tts_processor_base64 = manifest.get("tts_processor_base64", "")
 if tts_filename != "tts_processor.py":
     raise SystemExit("manifest TTS filename is invalid")
 if not re.fullmatch(r"[0-9a-f]{64}", tts_sha256):
     raise SystemExit("manifest TTS SHA-256 is invalid")
+try:
+    tts_source = base64.b64decode(tts_processor_base64, validate=True)
+except (TypeError, ValueError):
+    raise SystemExit("manifest TTS processor payload is invalid")
+if not tts_source.startswith(b"#!/usr/bin/env python3"):
+    raise SystemExit("manifest TTS processor source is invalid")
+if not (0 < len(tts_source) <= 1024 * 1024):
+    raise SystemExit("manifest TTS processor source has an invalid size")
+if hashlib.sha256(tts_source).hexdigest() != tts_sha256:
+    raise SystemExit("manifest TTS processor SHA-256 is invalid")
 sync_filename = manifest.get("sync_filename", "")
 sync_sha256 = manifest.get("sync_sha256", "")
 if sync_filename != "sync-audio-db.sh":
@@ -202,9 +215,8 @@ PY
 
   [[ -f "$BUNDLE_DIR/$WHEEL_FILENAME" && ! -L "$BUNDLE_DIR/$WHEEL_FILENAME" ]] || fail 'manifest wheel is missing or unsafe'
   [[ -f "$BUNDLE_DIR/$HELPER_FILENAME" && ! -L "$BUNDLE_DIR/$HELPER_FILENAME" ]] || fail 'manifest helper is missing or unsafe'
-  [[ -f "$BUNDLE_DIR/$TTS_PROCESSOR_FILENAME" && ! -L "$BUNDLE_DIR/$TTS_PROCESSOR_FILENAME" ]] || fail 'manifest TTS processor is missing or unsafe'
   [[ -f "$BUNDLE_DIR/$SYNC_FILENAME" && ! -L "$BUNDLE_DIR/$SYNC_FILENAME" ]] || fail 'manifest sync is missing or unsafe'
-  python3 - "$BUNDLE_DIR/$WHEEL_FILENAME" "$BUNDLE_DIR/$HELPER_FILENAME" "$BUNDLE_DIR/SHA256SUMS" "$WHEEL_FILENAME" "$WHEEL_SHA256" "$HELPER_FILENAME" "$HELPER_SHA256" "$SYNC_FILENAME" "$SYNC_SHA256" "$BUNDLE_DIR/$TTS_PROCESSOR_FILENAME" "$TTS_PROCESSOR_FILENAME" "$TTS_PROCESSOR_SHA256" <<'PY'
+  python3 - "$BUNDLE_DIR/$WHEEL_FILENAME" "$BUNDLE_DIR/$HELPER_FILENAME" "$BUNDLE_DIR/SHA256SUMS" "$WHEEL_FILENAME" "$WHEEL_SHA256" "$HELPER_FILENAME" "$HELPER_SHA256" "$SYNC_FILENAME" "$SYNC_SHA256" <<'PY'
 import hashlib
 import pathlib
 import sys
@@ -218,11 +230,8 @@ expected_helper_name = sys.argv[6]
 expected_helper_sha = sys.argv[7]
 expected_sync_name = sys.argv[8]
 expected_sync_sha = sys.argv[9]
-tts_path = pathlib.Path(sys.argv[10])
-expected_tts_name = sys.argv[11]
-expected_tts_sha = sys.argv[12]
 
-allowed_names = {expected_wheel_name, expected_helper_name, expected_sync_name, expected_tts_name}
+allowed_names = {expected_wheel_name, expected_helper_name, expected_sync_name}
 entries = {}
 for line in sums:
     parts = line.split()
@@ -238,16 +247,14 @@ for line in sums:
         raise SystemExit("SHA256SUMS has malformed checksum for {}".format(name))
     entries[name] = digest
 
-if len(entries) != 4:
-    raise SystemExit("SHA256SUMS must contain exactly 4 entries, found {}".format(len(entries)))
+if len(entries) != 3:
+    raise SystemExit("SHA256SUMS must contain exactly 3 entries, found {}".format(len(entries)))
 if entries[expected_wheel_name] != expected_wheel_sha:
     raise SystemExit("SHA256SUMS wheel checksum does not match manifest")
 if entries[expected_helper_name] != expected_helper_sha:
     raise SystemExit("SHA256SUMS helper checksum does not match manifest")
 if entries[expected_sync_name] != expected_sync_sha:
     raise SystemExit("SHA256SUMS sync checksum does not match manifest")
-if entries[expected_tts_name] != expected_tts_sha:
-    raise SystemExit("SHA256SUMS TTS processor checksum does not match manifest")
 
 wheel_digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
 if wheel_digest != expected_wheel_sha:
@@ -259,9 +266,6 @@ sync_path = pathlib.Path(sys.argv[1]).parent / expected_sync_name
 sync_digest = hashlib.sha256(sync_path.read_bytes()).hexdigest()
 if sync_digest != expected_sync_sha:
     raise SystemExit("sync file checksum mismatch")
-tts_digest = hashlib.sha256(tts_path.read_bytes()).hexdigest()
-if tts_digest != expected_tts_sha:
-    raise SystemExit("TTS processor file checksum mismatch")
 PY
   (
     cd "$BUNDLE_DIR"
@@ -683,13 +687,44 @@ install_audio_sync() {
 }
 
 install_tts_processor() {
-  local tts_src="$BUNDLE_DIR/$TTS_PROCESSOR_FILENAME"
-  local tts_tmp="$TTS_PROCESSOR_DEST.tmp.$COMMIT_SHA"
+  python3 - "$BUNDLE_DIR/artifact-manifest.json" "$TTS_PROCESSOR_DEST" "$COMMIT_SHA" <<'PY'
+import base64
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
 
-  [[ -f "$tts_src" && ! -L "$tts_src" ]] || fail 'tts_processor.py is missing from bundle'
-  install -d -m 0755 -o root -g root "${TTS_PROCESSOR_DEST%/*}"
-  install -m 0755 -o root -g root "$tts_src" "$tts_tmp"
-  mv -Tf "$tts_tmp" "$TTS_PROCESSOR_DEST"
+manifest_path = Path(sys.argv[1])
+destination = Path(sys.argv[2])
+commit_sha = sys.argv[3]
+with manifest_path.open(encoding="utf-8") as file_handle:
+    manifest = json.load(file_handle)
+if manifest.get("tts_filename") != "tts_processor.py":
+    raise SystemExit("manifest TTS filename is invalid")
+payload = manifest.get("tts_processor_base64", "")
+try:
+    source = base64.b64decode(payload, validate=True)
+except (TypeError, ValueError):
+    raise SystemExit("manifest TTS processor payload is invalid")
+expected_sha = manifest.get("tts_sha256", "")
+if hashlib.sha256(source).hexdigest() != expected_sha:
+    raise SystemExit("TTS processor checksum mismatch")
+if destination.is_symlink():
+    raise SystemExit("TTS processor destination must not be a symlink")
+if not destination.parent.is_dir():
+    raise SystemExit("TTS processor destination directory is missing")
+temporary = destination.with_name(".{}.tmp.{}".format(destination.name, commit_sha))
+try:
+    temporary.write_bytes(source)
+    temporary.chmod(0o755)
+    os.replace(temporary, destination)
+finally:
+    try:
+        temporary.unlink()
+    except FileNotFoundError:
+        pass
+PY
   printf 'TTS processor installed: %s\n' "$TTS_PROCESSOR_DEST"
 }
 

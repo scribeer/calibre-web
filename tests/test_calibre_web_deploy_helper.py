@@ -1,5 +1,6 @@
 """Hermetic contract tests for the production Calibre-Web deploy stack."""
 
+import base64
 import hashlib
 import io
 import json
@@ -54,8 +55,6 @@ class DeployHelperTest(unittest.TestCase):
             "    if [[ ${FUNCNAME[1]:-} == install_audio_sync ]]; then\n"
             "      [[ ${sync_dst:-} != /home/foroforo/bin/sync-audio-db.sh ]] || sync_dst=\"$AUBOOKS_TEST_SYNC_DST\"\n"
             "      [[ ${cron_file:-} != /etc/cron.d/aubooks-audio-sync ]] || cron_file=\"$AUBOOKS_TEST_CRON_FILE\"\n"
-            "    elif [[ ${FUNCNAME[1]:-} == install_tts_processor ]]; then\n"
-            "      [[ ${TTS_PROCESSOR_DEST:-} != /home/feninf/bin/tts_processor.py ]] || TTS_PROCESSOR_DEST=\"$AUBOOKS_TEST_TTS_PROCESSOR_DEST\"\n"
             "    fi\n"
             "  }\n"
             "  trap __aubooks_rewrite_deploy_paths DEBUG\n"
@@ -115,7 +114,7 @@ class DeployHelperTest(unittest.TestCase):
             "AUBOOKS_TEST_PATH_REWRITE": "1",
             "AUBOOKS_TEST_SYNC_DST": str(self.audio_sync_dst),
             "AUBOOKS_TEST_CRON_FILE": str(self.audio_sync_cron),
-            "AUBOOKS_TEST_TTS_PROCESSOR_DEST": str(self.tts_processor_dst),
+            "AUBOOKS_TTS_PROCESSOR_DEST": str(self.tts_processor_dst),
             "BASH_ENV": str(self.bash_env),
         })
 
@@ -145,6 +144,7 @@ class DeployHelperTest(unittest.TestCase):
             "sync_sha256": sync_digest,
             "tts_filename": tts_name,
             "tts_sha256": tts_digest,
+            "tts_processor_base64": base64.b64encode(tts_content.encode("utf-8")).decode("ascii"),
             "package_version": "0.6.28b0",
             "python_version": "3.12.14",
             "build_time_utc": "2026-09-13T00:00:00Z",
@@ -163,16 +163,14 @@ class DeployHelperTest(unittest.TestCase):
         (self.bundle / "artifact-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         (self.bundle / "deploy-request.json").write_text(json.dumps(request), encoding="utf-8")
         (self.bundle / "SHA256SUMS").write_text(
-            "{}  {}\n{}  {}\n{}  {}\n{}  {}\n".format(
+            "{}  {}\n{}  {}\n{}  {}\n".format(
                 digest, self.wheel_name,
                 helper_digest, self.helper_name,
                 sync_digest, sync_name,
-                tts_digest, tts_name,
             ),
             encoding="ascii",
         )
         (self.bundle / sync_name).write_text(sync_content, encoding="utf-8")
-        (self.bundle / tts_name).write_text(tts_content, encoding="utf-8")
 
     def write_fake_commands(self):
         fake_id = self.fake_bin / "id"
@@ -910,18 +908,14 @@ class DeployHelperTest(unittest.TestCase):
         sync_name = "sync-audio-db.sh"
         sync_content = "#!/usr/bin/env bash\necho sync\n"
         sync_digest = hashlib.sha256(sync_content.encode("utf-8")).hexdigest()
-        tts_name = "tts_processor.py"
-        tts_content = "#!/usr/bin/env python3\nprint('tts')\n"
-        tts_digest = hashlib.sha256(tts_content.encode("utf-8")).hexdigest()
-        sums = "{}  {}\n{}  {}\n{}  {}\n".format(
+        sums = "{}  {}\n{}  {}\n".format(
             digest, self.wheel_name,
             sync_digest, sync_name,
-            tts_digest, tts_name,
         )
         (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
         result = self.run_dry()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("exactly 4 entries", result.stderr)
+        self.assertIn("exactly 3 entries", result.stderr)
 
     def test_duplicate_helper_in_sha256sums_fails(self):
         digest = hashlib.sha256(self.wheel.read_bytes()).hexdigest()
@@ -929,14 +923,10 @@ class DeployHelperTest(unittest.TestCase):
         sync_name = "sync-audio-db.sh"
         sync_content = "#!/usr/bin/env bash\necho sync\n"
         sync_digest = hashlib.sha256(sync_content.encode("utf-8")).hexdigest()
-        tts_name = "tts_processor.py"
-        tts_content = "#!/usr/bin/env python3\nprint('tts')\n"
-        tts_digest = hashlib.sha256(tts_content.encode("utf-8")).hexdigest()
-        sums = "{}  {}\n{}  {}\n{}  {}\n{}  {}\n".format(
+        sums = "{}  {}\n{}  {}\n{}  {}\n".format(
             digest, self.wheel_name,
             helper_digest, self.helper_name,
             sync_digest, sync_name,
-            tts_digest, tts_name,
         )
         sums += "{}  {}\n".format(helper_digest, self.helper_name)
         (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
@@ -950,14 +940,10 @@ class DeployHelperTest(unittest.TestCase):
         sync_name = "sync-audio-db.sh"
         sync_content = "#!/usr/bin/env bash\necho sync\n"
         sync_digest = hashlib.sha256(sync_content.encode("utf-8")).hexdigest()
-        tts_name = "tts_processor.py"
-        tts_content = "#!/usr/bin/env python3\nprint('tts')\n"
-        tts_digest = hashlib.sha256(tts_content.encode("utf-8")).hexdigest()
-        sums = "{}  {}\n{}  {}\n{}  {}\n{}  {}\n".format(
+        sums = "{}  {}\n{}  {}\n{}  {}\n".format(
             digest, self.wheel_name,
             helper_digest, self.helper_name,
             sync_digest, sync_name,
-            tts_digest, tts_name,
         )
         sums += "abc123  evil.txt\n"
         (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
@@ -970,13 +956,9 @@ class DeployHelperTest(unittest.TestCase):
         sync_name = "sync-audio-db.sh"
         sync_content = "#!/usr/bin/env bash\necho sync\n"
         sync_digest = hashlib.sha256(sync_content.encode("utf-8")).hexdigest()
-        tts_name = "tts_processor.py"
-        tts_content = "#!/usr/bin/env python3\nprint('tts')\n"
-        tts_digest = hashlib.sha256(tts_content.encode("utf-8")).hexdigest()
-        sums = "{}  {}\n{}  {}\n{}  {}\n{}  {}\n".format(
+        sums = "{}  {}\n{}  {}\n{}  {}\n".format(
             digest, self.wheel_name,
             sync_digest, sync_name,
-            tts_digest, tts_name,
             "a" * 64, self.helper_name,
         )
         (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
@@ -989,14 +971,10 @@ class DeployHelperTest(unittest.TestCase):
         sync_name = "sync-audio-db.sh"
         sync_content = "#!/usr/bin/env bash\necho sync\n"
         sync_digest = hashlib.sha256(sync_content.encode("utf-8")).hexdigest()
-        tts_name = "tts_processor.py"
-        tts_content = "#!/usr/bin/env python3\nprint('tts')\n"
-        tts_digest = hashlib.sha256(tts_content.encode("utf-8")).hexdigest()
-        sums = "{}  {}\n{}  {}\n{}  {}\n{}  {}\n".format(
+        sums = "{}  {}\n{}  {}\n{}  {}\n".format(
             "b" * 64, self.wheel_name,
             helper_digest, self.helper_name,
             sync_digest, sync_name,
-            tts_digest, tts_name,
         )
         (self.bundle / "SHA256SUMS").write_text(sums, encoding="ascii")
         result = self.run_dry()
@@ -1087,14 +1065,13 @@ class DispatcherUploadTest(unittest.TestCase):
             "deploy-request.json": "{}",
             "deploy-calibre-web-release.sh": "#!/usr/bin/env bash\n",
             "sync-audio-db.sh": "#!/usr/bin/env bash\necho sync\n",
-            "tts_processor.py": "#!/usr/bin/env python3\nprint('tts')\n",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("upload {} OK".format(VALID_SHA).encode(), result.stdout)
         bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
         self.assertTrue(bundle.is_dir())
-        self.assertEqual(len(list(bundle.iterdir())), 7)
+        self.assertEqual(len(list(bundle.iterdir())), 6)
 
     def test_upload_sets_helper_executable(self):
         tar_data = self.make_tar({
@@ -1104,14 +1081,13 @@ class DispatcherUploadTest(unittest.TestCase):
             "deploy-request.json": "{}",
             "deploy-calibre-web-release.sh": "#!/usr/bin/env bash\necho ok\n",
             "sync-audio-db.sh": "#!/usr/bin/env bash\necho sync\n",
-            "tts_processor.py": "#!/usr/bin/env python3\nprint('tts')\n",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertEqual(result.returncode, 0, result.stderr)
         bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
         helper = bundle / "deploy-calibre-web-release.sh"
         self.assertEqual(oct(helper.stat().st_mode)[-3:], "755")
-        for name in (self.wheel_name, "SHA256SUMS", "artifact-manifest.json", "deploy-request.json", "sync-audio-db.sh", "tts_processor.py"):
+        for name in (self.wheel_name, "SHA256SUMS", "artifact-manifest.json", "deploy-request.json", "sync-audio-db.sh"):
             mode = oct((bundle / name).stat().st_mode)[-3:]
             self.assertTrue(int(mode, 8) & 0o111 == 0, "{} should not be executable, got {}".format(name, mode))
 
@@ -1189,9 +1165,6 @@ class DispatcherUploadTest(unittest.TestCase):
             info = tarfile.TarInfo(name="sync-audio-db.sh")
             info.size = 4
             tar.addfile(info, io.BytesIO(b"sync"))
-            info = tarfile.TarInfo(name="tts_processor.py")
-            info.size = 3
-            tar.addfile(info, io.BytesIO(b"tts"))
         result = self.run_dispatcher("upload {}".format(VALID_SHA), buf.getvalue())
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"duplicate filename", result.stderr)
@@ -1214,11 +1187,10 @@ class DispatcherUploadTest(unittest.TestCase):
             "artifact-manifest.json": b"{}",
             "deploy-request.json": b"{}",
             "deploy-calibre-web-release.sh": b"#!/usr/bin/env bash\n",
-            "sync-audio-db.sh": b"#!/usr/bin/env bash\necho sync\n",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn(b"expected exactly 7", result.stderr)
+        self.assertIn(b"expected exactly 6", result.stderr)
 
     def test_upload_rejects_unexpected_file(self):
         tar_data = self.make_tar({
@@ -1227,7 +1199,6 @@ class DispatcherUploadTest(unittest.TestCase):
             "artifact-manifest.json": b"{}",
             "deploy-request.json": b"{}",
             "deploy-calibre-web-release.sh": b"#!/usr/bin/env bash\n",
-            "sync-audio-db.sh": b"#!/usr/bin/env bash\necho sync\n",
             "evil.txt": b"malicious",
         })
         result = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
@@ -1249,7 +1220,6 @@ class DispatcherUploadTest(unittest.TestCase):
             "deploy-request.json": b"{}",
             "deploy-calibre-web-release.sh": b"#!/usr/bin/env bash\n",
             "sync-audio-db.sh": b"#!/usr/bin/env bash\necho sync\n",
-            "tts_processor.py": b"#!/usr/bin/env python3\nprint('tts')\n",
         })
         result1 = self.run_dispatcher("upload {}".format(VALID_SHA), tar_data)
         self.assertEqual(result1.returncode, 0, result1.stderr)
