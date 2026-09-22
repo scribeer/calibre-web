@@ -1,0 +1,10 @@
+[Unit]
+Description=AU-Books VPS1 user-data housekeeping
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/calibre-web
+ExecStart=%h/calibre-web/scripts/vps1-housekeeping.sh --apply
+
+[Install]
+WantedBy=default.target

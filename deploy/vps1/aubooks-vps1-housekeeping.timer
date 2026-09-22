@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AU-Books VPS1 housekeeping daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=15m
+Unit=aubooks-vps1-housekeeping.service
+
+[Install]
+WantedBy=timers.target
