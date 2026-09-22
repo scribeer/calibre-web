@@ -13,6 +13,7 @@ BUNDLE_DIR=""
 COMMIT_SHA=""
 DRY_RUN=0
 DEPLOY_ROOT="${AUBOOKS_DEPLOY_ROOT:-$DEFAULT_ROOT}"
+TTS_PROCESSOR_DEST="${AUBOOKS_TTS_PROCESSOR_DEST:-/home/feninf/bin/tts_processor.py}"
 DEPLOY_STARTED=0
 DESTRUCTIVE_PHASE=0
 ROLLBACK_RUNNING=0
@@ -40,6 +41,8 @@ SERVICE_CONTROL_GROUP=""
 SERVICE_UNIT_FILE_STATE=""
 WHEEL_FILENAME=""
 WHEEL_SHA256=""
+TTS_PROCESSOR_FILENAME=""
+TTS_PROCESSOR_SHA256=""
 PUBLIC_URL=""
 RELEASE_DIR=""
 SERVICE_USER=""
@@ -143,12 +146,18 @@ if not re.fullmatch(r"[0-9a-f]{64}", wheel_sha256):
     raise SystemExit("manifest wheel SHA-256 is invalid")
 helper_filename = manifest.get("helper_filename", "")
 helper_sha256 = manifest.get("helper_sha256", "")
-sync_sha256 = manifest.get("sync_sha256", "")
 if helper_filename != "deploy-calibre-web-release.sh":
     raise SystemExit("manifest helper filename is invalid")
 if not re.fullmatch(r"[0-9a-f]{64}", helper_sha256):
     raise SystemExit("manifest helper SHA-256 is invalid")
+tts_filename = manifest.get("tts_filename", "")
+tts_sha256 = manifest.get("tts_sha256", "")
+if tts_filename != "tts_processor.py":
+    raise SystemExit("manifest TTS filename is invalid")
+if not re.fullmatch(r"[0-9a-f]{64}", tts_sha256):
+    raise SystemExit("manifest TTS SHA-256 is invalid")
 sync_filename = manifest.get("sync_filename", "")
+sync_sha256 = manifest.get("sync_sha256", "")
 if sync_filename != "sync-audio-db.sh":
     raise SystemExit("manifest sync filename is invalid")
 if not re.fullmatch(r"[0-9a-f]{64}", manifest.get("sync_sha256", "")):
@@ -173,24 +182,29 @@ print(wheel_sha256)
 print(public_url)
 print(helper_filename)
 print(helper_sha256)
+print(tts_filename)
+print(tts_sha256)
 print(sync_filename)
 print(sync_sha256)
 PY
   )" || fail 'bundle manifest validation failed'
   mapfile -t manifest_values <<< "$manifest_output"
-[[ "${#manifest_values[@]}" -eq 7 ]] || fail 'bundle manifest output is incomplete'
- WHEEL_FILENAME="${manifest_values[0]}"
- WHEEL_SHA256="${manifest_values[1]}"
- PUBLIC_URL="${manifest_values[2]}"
- HELPER_FILENAME="${manifest_values[3]}"
- HELPER_SHA256="${manifest_values[4]}"
- SYNC_FILENAME="${manifest_values[5]}"
- SYNC_SHA256="${manifest_values[6]}"
+  [[ "${#manifest_values[@]}" -eq 9 ]] || fail 'bundle manifest output is incomplete'
+  WHEEL_FILENAME="${manifest_values[0]}"
+  WHEEL_SHA256="${manifest_values[1]}"
+  PUBLIC_URL="${manifest_values[2]}"
+  HELPER_FILENAME="${manifest_values[3]}"
+  HELPER_SHA256="${manifest_values[4]}"
+  TTS_PROCESSOR_FILENAME="${manifest_values[5]}"
+  TTS_PROCESSOR_SHA256="${manifest_values[6]}"
+  SYNC_FILENAME="${manifest_values[7]}"
+  SYNC_SHA256="${manifest_values[8]}"
 
   [[ -f "$BUNDLE_DIR/$WHEEL_FILENAME" && ! -L "$BUNDLE_DIR/$WHEEL_FILENAME" ]] || fail 'manifest wheel is missing or unsafe'
   [[ -f "$BUNDLE_DIR/$HELPER_FILENAME" && ! -L "$BUNDLE_DIR/$HELPER_FILENAME" ]] || fail 'manifest helper is missing or unsafe'
+  [[ -f "$BUNDLE_DIR/$TTS_PROCESSOR_FILENAME" && ! -L "$BUNDLE_DIR/$TTS_PROCESSOR_FILENAME" ]] || fail 'manifest TTS processor is missing or unsafe'
   [[ -f "$BUNDLE_DIR/$SYNC_FILENAME" && ! -L "$BUNDLE_DIR/$SYNC_FILENAME" ]] || fail 'manifest sync is missing or unsafe'
-  python3 - "$BUNDLE_DIR/$WHEEL_FILENAME" "$BUNDLE_DIR/$HELPER_FILENAME" "$BUNDLE_DIR/SHA256SUMS" "$WHEEL_FILENAME" "$WHEEL_SHA256" "$HELPER_FILENAME" "$HELPER_SHA256" "$SYNC_FILENAME" "$SYNC_SHA256" <<'PY'
+  python3 - "$BUNDLE_DIR/$WHEEL_FILENAME" "$BUNDLE_DIR/$HELPER_FILENAME" "$BUNDLE_DIR/SHA256SUMS" "$WHEEL_FILENAME" "$WHEEL_SHA256" "$HELPER_FILENAME" "$HELPER_SHA256" "$SYNC_FILENAME" "$SYNC_SHA256" "$BUNDLE_DIR/$TTS_PROCESSOR_FILENAME" "$TTS_PROCESSOR_FILENAME" "$TTS_PROCESSOR_SHA256" <<'PY'
 import hashlib
 import pathlib
 import sys
@@ -204,8 +218,11 @@ expected_helper_name = sys.argv[6]
 expected_helper_sha = sys.argv[7]
 expected_sync_name = sys.argv[8]
 expected_sync_sha = sys.argv[9]
+tts_path = pathlib.Path(sys.argv[10])
+expected_tts_name = sys.argv[11]
+expected_tts_sha = sys.argv[12]
 
-allowed_names = {expected_wheel_name, expected_helper_name, expected_sync_name}
+allowed_names = {expected_wheel_name, expected_helper_name, expected_sync_name, expected_tts_name}
 entries = {}
 for line in sums:
     parts = line.split()
@@ -221,14 +238,16 @@ for line in sums:
         raise SystemExit("SHA256SUMS has malformed checksum for {}".format(name))
     entries[name] = digest
 
-if len(entries) != 3:
-    raise SystemExit("SHA256SUMS must contain exactly 3 entries, found {}".format(len(entries)))
+if len(entries) != 4:
+    raise SystemExit("SHA256SUMS must contain exactly 4 entries, found {}".format(len(entries)))
 if entries[expected_wheel_name] != expected_wheel_sha:
     raise SystemExit("SHA256SUMS wheel checksum does not match manifest")
 if entries[expected_helper_name] != expected_helper_sha:
     raise SystemExit("SHA256SUMS helper checksum does not match manifest")
 if entries[expected_sync_name] != expected_sync_sha:
     raise SystemExit("SHA256SUMS sync checksum does not match manifest")
+if entries[expected_tts_name] != expected_tts_sha:
+    raise SystemExit("SHA256SUMS TTS processor checksum does not match manifest")
 
 wheel_digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
 if wheel_digest != expected_wheel_sha:
@@ -240,6 +259,9 @@ sync_path = pathlib.Path(sys.argv[1]).parent / expected_sync_name
 sync_digest = hashlib.sha256(sync_path.read_bytes()).hexdigest()
 if sync_digest != expected_sync_sha:
     raise SystemExit("sync file checksum mismatch")
+tts_digest = hashlib.sha256(tts_path.read_bytes()).hexdigest()
+if tts_digest != expected_tts_sha:
+    raise SystemExit("TTS processor file checksum mismatch")
 PY
   (
     cd "$BUNDLE_DIR"
@@ -660,6 +682,17 @@ install_audio_sync() {
   printf 'audio sync installed: %s + %s\n' "$sync_dst" "$cron_file"
 }
 
+install_tts_processor() {
+  local tts_src="$BUNDLE_DIR/$TTS_PROCESSOR_FILENAME"
+  local tts_tmp="$TTS_PROCESSOR_DEST.tmp.$COMMIT_SHA"
+
+  [[ -f "$tts_src" && ! -L "$tts_src" ]] || fail 'tts_processor.py is missing from bundle'
+  install -d -m 0755 -o root -g root "${TTS_PROCESSOR_DEST%/*}"
+  install -m 0755 -o root -g root "$tts_src" "$tts_tmp"
+  mv -Tf "$tts_tmp" "$TTS_PROCESSOR_DEST"
+  printf 'TTS processor installed: %s\n' "$TTS_PROCESSOR_DEST"
+}
+
 write_deployed_manifest() {
   python3 - "$BUNDLE_DIR/artifact-manifest.json" "$RELEASE_DIR/deployed-manifest.json" <<'PY'
 import json
@@ -805,6 +838,7 @@ print_dry_run_plan() {
   RELEASE_DIR="$RELEASES_DIR/$COMMIT_SHA"
   plan "would acquire flock on $DEPLOY_ROOT"
   plan "would create candidate release $RELEASE_DIR with a clean venv"
+  plan "would install tts_processor.py to $TTS_PROCESSOR_DEST"
   plan "would install and verify $WHEEL_FILENAME, run pip check and cps --help"
   plan 'would verify AU theme 3:aubooks and invite imports'
   plan "would runtime-mask and stop $SERVICE_NAME, then require inactive/failed state, MainPID=0, and an empty unit cgroup"
@@ -848,6 +882,7 @@ stop_service_and_confirm
 create_final_rollback_snapshots
 set_aubooks_theme_if_needed
 switch_current_release
+install_tts_processor
 allow_service_start
 start_service
 health_check

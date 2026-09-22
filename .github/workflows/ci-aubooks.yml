@@ -50,6 +50,7 @@ jobs:
             tests/test_aubooks_theme_templates.py \
             tests/test_aubooks_tts_transport.py \
             tests/test_aubooks_tts_cancellation.py \
+            tests/test_tts_processor_timeout.py \
             tests/test_calibre_web_deploy_helper.py
 
   build:
@@ -227,6 +228,7 @@ jobs:
           cp "$WHEEL_PATH" "$RUNNER_TEMP/calibreweb-artifact/$WHEEL_FILENAME"
           cp deploy/vps2/deploy-calibre-web-release.sh "$RUNNER_TEMP/calibreweb-artifact/deploy-calibre-web-release.sh"
           cp deploy/vps2/sync-audio-db.sh "$RUNNER_TEMP/calibreweb-artifact/sync-audio-db.sh"
+          cp scripts/tts_processor.py "$RUNNER_TEMP/calibreweb-artifact/tts_processor.py"
           "$RUNNER_TEMP/calibreweb-wheel-venv/bin/python" - <<'PY'
           import hashlib
           from importlib.metadata import version
@@ -267,10 +269,16 @@ jobs:
           sync_sha256 = hashlib.sha256(sync_path.read_bytes()).hexdigest()
           with open(artifact_dir / "SHA256SUMS", "a", encoding="ascii") as sums:
               sums.write("{}  {}\n".format(sync_sha256, "sync-audio-db.sh"))
+          tts_path = artifact_dir / "tts_processor.py"
+          tts_sha256 = hashlib.sha256(tts_path.read_bytes()).hexdigest()
+          with open(artifact_dir / "SHA256SUMS", "a", encoding="ascii") as sums:
+              sums.write("{}  {}\n".format(tts_sha256, "tts_processor.py"))
           manifest["helper_filename"] = "deploy-calibre-web-release.sh"
           manifest["helper_sha256"] = helper_sha256
           manifest["sync_filename"] = "sync-audio-db.sh"
           manifest["sync_sha256"] = sync_sha256
+          manifest["tts_filename"] = "tts_processor.py"
+          manifest["tts_sha256"] = tts_sha256
           (artifact_dir / "artifact-manifest.json").write_text(
               json.dumps(manifest, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",

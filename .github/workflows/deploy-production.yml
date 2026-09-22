@@ -156,7 +156,7 @@ jobs:
           from zipfile import ZipFile
 
           artifact_dir = Path(os.environ["ARTIFACT_DIR"])
-          expected_files = {"SHA256SUMS", "artifact-manifest.json", "deploy-calibre-web-release.sh", "sync-audio-db.sh"}
+          expected_files = {"SHA256SUMS", "artifact-manifest.json", "deploy-calibre-web-release.sh", "sync-audio-db.sh", "tts_processor.py"}
           missing = sorted(name for name in expected_files if not (artifact_dir / name).is_file())
           if missing:
               raise SystemExit("Artifact files missing: {}".format(", ".join(missing)))
@@ -188,6 +188,16 @@ jobs:
           helper_digest = hashlib.sha256(helper.read_bytes()).hexdigest()
           if helper_digest != manifest.get("helper_sha256"):
               raise SystemExit("Manifest helper_sha256 mismatch")
+
+          tts_filename = manifest.get("tts_filename", "")
+          if tts_filename != "tts_processor.py":
+              raise SystemExit("Manifest TTS filename is invalid")
+          tts = artifact_dir / tts_filename
+          if not tts.is_file():
+              raise SystemExit("Manifest TTS processor is missing")
+          tts_digest = hashlib.sha256(tts.read_bytes()).hexdigest()
+          if tts_digest != manifest.get("tts_sha256"):
+              raise SystemExit("Manifest TTS processor SHA-256 mismatch")
 
           with ZipFile(wheel) as archive:
               bad_file = archive.testzip()
@@ -246,6 +256,7 @@ jobs:
           cp "$ARTIFACT_DIR/$WHEEL_FILENAME" "$ARTIFACT_DIR/SHA256SUMS" "$ARTIFACT_DIR/artifact-manifest.json" "$BUNDLE_DIR/"
           cp "$ARTIFACT_DIR/deploy-calibre-web-release.sh" "$BUNDLE_DIR/deploy-calibre-web-release.sh"
           cp "$ARTIFACT_DIR/sync-audio-db.sh" "$BUNDLE_DIR/sync-audio-db.sh"
+          cp "$ARTIFACT_DIR/tts_processor.py" "$BUNDLE_DIR/tts_processor.py"
           python - <<'PY'
           import json
           import os
@@ -326,11 +337,11 @@ jobs:
             -o StrictHostKeyChecking=yes
             -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts"
           )
-          for f in "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json deploy-calibre-web-release.sh sync-audio-db.sh; do
+          for f in "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json deploy-calibre-web-release.sh sync-audio-db.sh tts_processor.py; do
             [[ -f "$BUNDLE_DIR/$f" ]] || { printf 'bundle file missing: %s\n' "$f" >&2; exit 1; }
           done
           tar -C "$BUNDLE_DIR" -cf - \
-            "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json deploy-calibre-web-release.sh sync-audio-db.sh \
+            "$WHEEL_FILENAME" SHA256SUMS artifact-manifest.json deploy-request.json deploy-calibre-web-release.sh sync-audio-db.sh tts_processor.py \
           | ssh "${ssh_options[@]}" -- "$target" "upload $COMMIT_SHA"
       - name: Invoke deploy via forced-command protocol
         env:
