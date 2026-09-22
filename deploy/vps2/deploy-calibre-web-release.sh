@@ -8,6 +8,7 @@ readonly MIN_FREE_KB="${AUBOOKS_MIN_FREE_KB:-1048576}"
 readonly HEALTH_STARTUP_TIMEOUT="${AUBOOKS_HEALTH_STARTUP_TIMEOUT:-30}"
 readonly HEALTH_RETRY_INTERVAL="${AUBOOKS_HEALTH_RETRY_INTERVAL:-1}"
 readonly CGROUP_ROOT="${AUBOOKS_CGROUP_ROOT:-/sys/fs/cgroup}"
+readonly STAGING_BASE="${STAGING_BASE:-/var/tmp}"
 
 BUNDLE_DIR=""
 COMMIT_SHA=""
@@ -351,12 +352,162 @@ validate_platform() {
   [[ -d "$PREVIOUS_RELEASE" ]] || fail 'current release target does not exist'
   [[ "$PREVIOUS_RELEASE" == "$RELEASES_DIR/"* ]] || fail 'current release target is outside releases/'
 
+  cleanup_deploy_artifacts
   available_kb="$(df -Pk "$DEPLOY_ROOT" | python3 -c 'import sys; lines=sys.stdin.read().splitlines(); print(lines[-1].split()[3] if len(lines) >= 2 else "")')"
   [[ "$available_kb" =~ ^[0-9]+$ ]] || fail 'could not determine free disk space'
   (( available_kb >= MIN_FREE_KB )) || fail "insufficient free space: ${available_kb}KB available, ${MIN_FREE_KB}KB required"
   validate_app_database
   validate_sqlite_database "$GDRIVE_DB"
   validate_sqlite_database "$METADATA_DB"
+}
+
+cleanup_deploy_artifacts() {
+  python3 - "$RELEASES_DIR" "$BACKUPS_DIR" "$CURRENT_LINK" "$STAGING_BASE" "$BUNDLE_DIR" "$COMMIT_SHA" "$DRY_RUN" <<'PY'
+import pathlib
+import re
+import shutil
+import sys
+import time
+
+releases = pathlib.Path(sys.argv[1])
+backups = pathlib.Path(sys.argv[2])
+current_link = pathlib.Path(sys.argv[3])
+staging_base = pathlib.Path(sys.argv[4])
+bundle_dir = pathlib.Path(sys.argv[5])
+commit_sha = sys.argv[6]
+dry_run = sys.argv[7] == "1"
+
+LEGACY_RELEASE = "legacy-0.6.27"
+FTS5_RELEASE = "f103e315bfe940027b5a7f71c39e0626286f5d23"
+STAGING_MIN_AGE_SECONDS = 24 * 60 * 60
+
+
+def checked_root(path, label, required=True):
+    if not path.exists():
+        if required:
+            raise SystemExit("{} directory does not exist".format(label))
+        return None
+    if path.is_symlink() or not path.is_dir():
+        raise SystemExit("{} directory is unsafe".format(label))
+    return path.resolve(strict=True)
+
+
+def direct_directories(root):
+    return [
+        entry for entry in root.iterdir()
+        if not entry.is_symlink() and entry.is_dir()
+    ]
+
+
+def newest(paths, count):
+    return set(sorted(
+        paths,
+        key=lambda path: (path.stat().st_mtime_ns, path.name),
+        reverse=True,
+    )[:count])
+
+
+def is_within(path, parent):
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
+releases_root = checked_root(releases, "releases")
+backups_root = checked_root(backups, "backups")
+staging_root = checked_root(staging_base, "staging", required=False)
+
+if not current_link.is_symlink():
+    raise SystemExit("current release symlink is unavailable")
+active = current_link.resolve(strict=True)
+if not active.is_dir() or not is_within(active, releases_root):
+    raise SystemExit("current release target is outside releases")
+
+release_dirs = direct_directories(releases_root)
+backup_dirs = direct_directories(backups_root)
+inactive = [path for path in release_dirs if path.resolve(strict=True) != active]
+keep_releases = newest(inactive, 2)
+keep_releases.update(
+    path for path in release_dirs
+    if path.name in {LEGACY_RELEASE, FTS5_RELEASE}
+)
+release_deletions = [
+    path for path in inactive
+    if path not in keep_releases
+]
+
+keep_backups = newest(backup_dirs, 3)
+keep_backups.update(path for path in backup_dirs if path.name.startswith("fts5-rollout-"))
+backup_deletions = [path for path in backup_dirs if path not in keep_backups]
+
+staging_deletions = []
+if staging_root is not None:
+    current_staging = None
+    if bundle_dir.name == "deploy-bundle" and bundle_dir.parent.name == "aubooks-calibre-web-{}".format(commit_sha):
+        resolved_bundle = bundle_dir.resolve(strict=True)
+        if resolved_bundle.parent.parent == staging_root:
+            current_staging = resolved_bundle.parent
+    release_names = {path.name for path in release_dirs}
+    oldest_allowed = time.time() - STAGING_MIN_AGE_SECONDS
+    for path in direct_directories(staging_root):
+        match = re.fullmatch(r"aubooks-calibre-web-([0-9a-f]{40})", path.name)
+        if match is None or path.resolve(strict=True) == current_staging:
+            continue
+        if match.group(1) in release_names and path.stat().st_mtime < oldest_allowed:
+            staging_deletions.append(path)
+
+
+def remove_directory(path, root, label):
+    if path.is_symlink() or not path.is_dir():
+        raise SystemExit("refusing unsafe {} cleanup target: {}".format(label, path))
+    resolved = path.resolve(strict=True)
+    if resolved.parent != root or path.parent.resolve(strict=True) != root:
+        raise SystemExit("refusing {} cleanup outside known directory: {}".format(label, path))
+    if label == "release" and (resolved == active or is_within(active, resolved)):
+        raise SystemExit("refusing to remove active release: {}".format(path))
+    if dry_run:
+        print("RETENTION_DRY_RUN: would remove {} {}".format(label, resolved))
+        return
+    shutil.rmtree(resolved)
+    print("Retention removed {}: {}".format(label, resolved))
+
+
+for candidate in backup_deletions:
+    remove_directory(candidate, backups_root, "backup")
+for candidate in release_deletions:
+    remove_directory(candidate, releases_root, "release")
+for candidate in staging_deletions:
+    remove_directory(candidate, staging_root, "staging")
+PY
+}
+
+cleanup_current_staging() {
+  python3 - "$STAGING_BASE" "$BUNDLE_DIR" "$COMMIT_SHA" <<'PY'
+import pathlib
+import shutil
+import sys
+
+staging_base = pathlib.Path(sys.argv[1])
+bundle_dir = pathlib.Path(sys.argv[2])
+commit_sha = sys.argv[3]
+expected_name = "aubooks-calibre-web-{}".format(commit_sha)
+
+if staging_base.is_symlink() or not staging_base.is_dir():
+    raise SystemExit("staging directory is unsafe")
+staging_root = staging_base.resolve(strict=True)
+if bundle_dir.name != "deploy-bundle" or bundle_dir.parent.name != expected_name:
+    raise SystemExit("bundle is outside the expected staging directory")
+resolved_bundle = bundle_dir.resolve(strict=True)
+staging_dir = resolved_bundle.parent
+if staging_dir.parent != staging_root or staging_dir.name != expected_name:
+    raise SystemExit("bundle canonical path is outside staging")
+if staging_dir.is_symlink() or not staging_dir.is_dir():
+    raise SystemExit("current staging target is unsafe")
+shutil.rmtree(staging_dir)
+print("Removed deployed staging: {}".format(staging_dir))
+PY
 }
 
 acquire_lock() {
@@ -927,4 +1078,7 @@ write_deployed_manifest
 DEPLOY_STARTED=0
 DESTRUCTIVE_PHASE=0
 trap - ERR TERM INT HUP
+if ! cleanup_current_staging; then
+  printf 'WARNING: current deployed staging cleanup failed\n' >&2
+fi
 printf 'Deployment completed: %s\n' "$COMMIT_SHA"

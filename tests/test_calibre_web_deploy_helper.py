@@ -27,6 +27,7 @@ class DeployHelperTest(unittest.TestCase):
         self.base = Path(self.temp_dir.name)
         self.root = self.base / "opt" / "calibre-web"
         self.bundle = self.base / "bundle"
+        self.staging = self.base / "staging"
         self.fake_bin = self.base / "bin"
         self.command_log = self.base / "commands.log"
         self.audio_sync_dst = self.base / "home" / "foroforo" / "bin" / "sync-audio-db.sh"
@@ -42,6 +43,7 @@ class DeployHelperTest(unittest.TestCase):
             self.root / "backups",
             self.previous,
             self.bundle,
+            self.staging,
             self.fake_bin,
             self.audio_sync_dst.parent,
             self.audio_sync_cron.parent,
@@ -115,6 +117,7 @@ class DeployHelperTest(unittest.TestCase):
             "AUBOOKS_TEST_SYNC_DST": str(self.audio_sync_dst),
             "AUBOOKS_TEST_CRON_FILE": str(self.audio_sync_cron),
             "AUBOOKS_TTS_PROCESSOR_DEST": str(self.tts_processor_dst),
+            "STAGING_BASE": str(self.staging),
             "BASH_ENV": str(self.bash_env),
         })
 
@@ -363,9 +366,21 @@ class DeployHelperTest(unittest.TestCase):
             "exec /usr/bin/mv \"$@\"\n",
             encoding="utf-8",
         )
+        fake_df = self.fake_bin / "df"
+        fake_df.write_text(
+            "#!/usr/bin/env bash\n"
+            "if [[ -n ${AUBOOKS_TEST_AVAILABLE_KB:-} ]]; then\n"
+            "  printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\\n'\n"
+            "  printf 'testfs 1000000 1 %s 1%% /\\n' \"$AUBOOKS_TEST_AVAILABLE_KB\"\n"
+            "else\n"
+            "  exec /bin/df \"$@\"\n"
+            "fi\n",
+            encoding="utf-8",
+        )
         for path in (
             fake_id, fake_systemctl, fake_install, fake_runuser, fake_ss,
             fake_curl, fake_journalctl, fake_chown, fake_chmod, fake_rm, fake_mv,
+            fake_df,
         ):
             path.chmod(0o755)
 
@@ -396,6 +411,22 @@ class DeployHelperTest(unittest.TestCase):
             text=True,
             timeout=30,
         )
+
+    def run_cleanup_preflight(self):
+        result = self.run_live(AUBOOKS_TEST_AVAILABLE_KB="0")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("insufficient free space", result.stderr)
+        return result
+
+    def make_artifact_directories(self, parent, names):
+        timestamp = 1_700_000_000
+        paths = []
+        for index, name in enumerate(names):
+            path = parent / name
+            path.mkdir()
+            os.utime(path, (timestamp + index, timestamp + index))
+            paths.append(path)
+        return paths
 
     def tree_snapshot(self):
         snapshot = []
@@ -470,6 +501,148 @@ class DeployHelperTest(unittest.TestCase):
         self.assertEqual(before, after)
         self.assertFalse(self.command_log.exists())
         self.assertIn("DRY_RUN:", result.stdout)
+
+    def test_retention_never_removes_active_release(self):
+        os.utime(self.previous, (1_600_000_000, 1_600_000_000))
+        releases = self.make_artifact_directories(
+            self.root / "releases", ["release-1", "release-2", "release-3"]
+        )
+
+        self.run_cleanup_preflight()
+
+        self.assertTrue(self.previous.is_dir())
+        self.assertFalse(releases[0].exists())
+
+    def test_retention_preserves_two_newest_inactive_releases(self):
+        releases = self.make_artifact_directories(
+            self.root / "releases",
+            ["release-1", "release-2", "release-3", "release-4"],
+        )
+
+        self.run_cleanup_preflight()
+
+        self.assertFalse(releases[0].exists())
+        self.assertFalse(releases[1].exists())
+        self.assertTrue(releases[2].is_dir())
+        self.assertTrue(releases[3].is_dir())
+
+    def test_retention_preserves_three_newest_backups(self):
+        backups = self.make_artifact_directories(
+            self.root / "backups", ["backup-1", "backup-2", "backup-3", "backup-4", "backup-5"]
+        )
+
+        self.run_cleanup_preflight()
+
+        self.assertFalse(backups[0].exists())
+        self.assertFalse(backups[1].exists())
+        for backup in backups[2:]:
+            self.assertTrue(backup.is_dir())
+
+    def test_retention_preserves_fts5_backup_and_protected_releases(self):
+        protected_backup = self.make_artifact_directories(
+            self.root / "backups", ["fts5-rollout-20260901"]
+        )[0]
+        self.make_artifact_directories(
+            self.root / "backups", ["backup-1", "backup-2", "backup-3", "backup-4"]
+        )
+        protected_releases = self.make_artifact_directories(
+            self.root / "releases",
+            ["legacy-0.6.27", "f103e315bfe940027b5a7f71c39e0626286f5d23"],
+        )
+        self.make_artifact_directories(
+            self.root / "releases", ["release-1", "release-2", "release-3"]
+        )
+
+        self.run_cleanup_preflight()
+
+        self.assertTrue(protected_backup.is_dir())
+        for release in protected_releases:
+            self.assertTrue(release.is_dir())
+
+    def test_retention_refuses_cleanup_when_active_is_outside_releases(self):
+        releases = self.make_artifact_directories(
+            self.root / "releases", ["release-1", "release-2", "release-3"]
+        )
+        backups = self.make_artifact_directories(
+            self.root / "backups", ["backup-1", "backup-2", "backup-3", "backup-4"]
+        )
+        outside = self.base / "outside-active"
+        outside.mkdir()
+        (self.root / "current").unlink()
+        (self.root / "current").symlink_to(outside)
+
+        result = self.run_live(AUBOOKS_TEST_AVAILABLE_KB="0")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("outside releases", result.stderr)
+        self.assertTrue(all(path.is_dir() for path in releases + backups))
+
+    def test_retention_refuses_cleanup_when_active_is_unknown(self):
+        releases = self.make_artifact_directories(
+            self.root / "releases", ["release-1", "release-2", "release-3"]
+        )
+        backups = self.make_artifact_directories(
+            self.root / "backups", ["backup-1", "backup-2", "backup-3", "backup-4"]
+        )
+        (self.root / "current").unlink()
+        (self.root / "current").symlink_to(self.root / "releases" / "missing")
+
+        result = self.run_live(AUBOOKS_TEST_AVAILABLE_KB="0")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("current release target does not exist", result.stderr)
+        self.assertTrue(all(path.is_dir() for path in releases + backups))
+
+    def test_retention_does_not_touch_unrelated_paths_or_regular_files(self):
+        outside = self.base / "unrelated"
+        outside.mkdir()
+        marker = outside / "marker"
+        marker.write_text("keep", encoding="ascii")
+        backup_file = self.root / "backups" / "manual-backup.tar"
+        backup_file.write_text("keep", encoding="ascii")
+        (self.root / "backups" / "linked-backup").symlink_to(outside, target_is_directory=True)
+        (self.root / "releases" / "linked-release").symlink_to(outside, target_is_directory=True)
+        self.make_artifact_directories(
+            self.root / "backups", ["backup-1", "backup-2", "backup-3", "backup-4"]
+        )
+        self.make_artifact_directories(
+            self.root / "releases", ["release-1", "release-2", "release-3"]
+        )
+
+        self.run_cleanup_preflight()
+
+        self.assertEqual(marker.read_text(encoding="ascii"), "keep")
+        self.assertEqual(backup_file.read_text(encoding="ascii"), "keep")
+        self.assertTrue((self.root / "backups" / "linked-backup").is_symlink())
+        self.assertTrue((self.root / "releases" / "linked-release").is_symlink())
+
+    def test_retention_only_removes_old_staging_with_existing_release(self):
+        release_sha = "c" * 40
+        (self.root / "releases" / release_sha).mkdir()
+        old_orphan = self.staging / "aubooks-calibre-web-{}".format(release_sha)
+        old_orphan.mkdir()
+        os.utime(old_orphan, (1_600_000_000, 1_600_000_000))
+        unknown_sha = "d" * 40
+        unrelated = self.staging / "aubooks-calibre-web-{}".format(unknown_sha)
+        unrelated.mkdir()
+        os.utime(unrelated, (1_600_000_000, 1_600_000_000))
+
+        self.run_cleanup_preflight()
+
+        self.assertFalse(old_orphan.exists())
+        self.assertTrue(unrelated.is_dir())
+
+    def test_successful_deploy_removes_its_current_staging(self):
+        staged_bundle = self.staging / "aubooks-calibre-web-{}".format(VALID_SHA) / "deploy-bundle"
+        staged_bundle.parent.mkdir()
+        self.bundle.rename(staged_bundle)
+        self.bundle = staged_bundle
+
+        result = self.run_live()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(staged_bundle.parent.exists())
+        self.assertIn("Removed deployed staging", result.stdout)
 
     def test_tts_processor_installed_from_bundle(self):
         result = self.run_live()
