@@ -490,7 +490,7 @@ PY
     fi
   done < "$candidates_file"
 
-  if [ "$MODE" = "apply" ]; then
+  if [ "$MODE" = "apply" ] && [ "$deleted" -gt 0 ]; then
     if ! "$OPENCODE_BIN" db 'PRAGMA wal_checkpoint(TRUNCATE);'; then
       printf '%s WARNING WAL checkpoint failed; VACUUM skipped\n' "$section"
       RUN_FAILED=1
@@ -508,8 +508,10 @@ PY
           "$section" "${free_after:-unknown}" "$required"
       fi
     fi
-  else
+  elif [ "$MODE" = "dry-run" ]; then
     printf '%s KEEP dry-run: checkpoint and VACUUM not executed\n' "$section"
+  else
+    printf '%s KEEP no sessions deleted: checkpoint and VACUUM not executed\n' "$section"
   fi
 
   db_after="$(file_bytes "$OPENCODE_DB")"

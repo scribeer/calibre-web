@@ -237,6 +237,24 @@ def test_opencode_retention_uses_cli_delete_not_sql(environment, tmp_path):
     assert ["session", "delete", "ses_recent"] not in calls_made
 
 
+def test_opencode_no_deletions_skips_checkpoint_and_vacuum(environment, tmp_path):
+    now_ms = int(time.time() * 1000)
+    sessions = [
+        {"id": f"ses_{index:03d}", "created": now_ms, "updated": now_ms + index}
+        for index in range(25)
+    ]
+    calls = configure_large_opencode(environment, tmp_path, sessions)
+    environment["HOUSEKEEPING_FREE_BYTES_OVERRIDE"] = str(10 * 1024**3)
+
+    result = run_housekeeping(environment)
+    calls_made = read_calls(calls)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not any(call[:2] == ["session", "delete"] for call in calls_made)
+    assert not any(call[0] == "db" for call in calls_made)
+    assert "no sessions deleted: checkpoint and VACUUM not executed" in result.stdout
+
+
 def test_opencode_malformed_json_fails_safe(environment, tmp_path):
     calls = configure_large_opencode(environment, tmp_path, [], malformed=True)
 
