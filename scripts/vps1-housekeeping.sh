@@ -194,13 +194,25 @@ path_is_in_use() {
   command -v fuser >/dev/null 2>&1 && fuser -s -- "$target" 2>/dev/null
 }
 
+path_tree_is_in_use() {
+  local target="$1" child
+  path_is_in_use "$target" && return 0
+  [ -d "$target" ] || return 1
+  while IFS= read -r -d '' child; do
+    if path_is_in_use "$child"; then
+      return 0
+    fi
+  done < <(find -- "$target" -type f -print0 2>/dev/null)
+  return 1
+}
+
 remove_entry() {
   local section="$1" root="$2" target="$3" size
   if ! direct_entry_is_safe "$root" "$target"; then
     printf '%s SKIP unsafe path: %s\n' "$section" "$target"
     return 1
   fi
-  if path_is_in_use "$target"; then
+  if path_tree_is_in_use "$target"; then
     printf '%s KEEP active/in-use %s\n' "$section" "$target"
     return 1
   fi
@@ -747,12 +759,11 @@ cleanup_tmp() {
 }
 
 cleanup_caches() {
-  local section="caches" root candidate age now mtime max_age freed=0
+  local section="caches" root candidate age now mtime max_age freed=0 opencode_cache
   local -A seen=()
   printf '\n[%s]\n' "$section"
   max_age=$((7 * 24 * 3600))
-  [ "$PRESSURE_LEVEL" = "pressure" ] && max_age=$((48 * 3600))
-  [ "$PRESSURE_LEVEL" = "critical" ] && max_age=$((24 * 3600))
+  [ "$PRESSURE_LEVEL" != "normal" ] && max_age=0
   now="$(date +%s)"
   for root in "${CACHE_ROOTS[@]}"; do
     if ! root_is_safe "$root"; then
@@ -787,6 +798,31 @@ cleanup_caches() {
     done
     shopt -u nullglob
   done
+  opencode_cache="$HOME/.cache/opencode"
+  if root_is_safe "$opencode_cache"; then
+    shopt -s nullglob
+    for candidate in "$opencode_cache"/*.tmp; do
+      if ! direct_entry_is_safe "$opencode_cache" "$candidate"; then
+        printf '%s KEEP unsafe %s\n' "$section" "$candidate"
+        continue
+      fi
+      mtime="$(stat -c %Y -- "$candidate" 2>/dev/null || true)"
+      if [[ ! "$mtime" =~ ^[0-9]+$ ]]; then
+        printf '%s KEEP invalid age %s\n' "$section" "$candidate"
+        continue
+      fi
+      age=$((now - mtime))
+      if [ "$age" -le "$max_age" ]; then
+        printf '%s KEEP recent age_seconds=%s %s\n' "$section" "$age" "$candidate"
+        continue
+      fi
+      LAST_REMOVED_BYTES=0
+      if remove_entry "$section" "$opencode_cache" "$candidate"; then
+        freed=$((freed + LAST_REMOVED_BYTES))
+      fi
+    done
+    shopt -u nullglob
+  fi
   printf '%s freed_bytes=%s mode=%s\n' "$section" "$freed" "$MODE"
 }
 

@@ -310,7 +310,7 @@ def test_pressure_removes_old_tmp_file_but_keeps_recent_file(environment):
     assert recent_file.exists()
 
 
-def test_pressure_removes_old_disposable_cache_entry(environment, tmp_path):
+def test_pressure_removes_disposable_cache_entries(environment, tmp_path):
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
     old_entry = cache_root / "old-download"
@@ -321,14 +321,16 @@ def test_pressure_removes_old_disposable_cache_entry(environment, tmp_path):
     (recent_entry / "blob").write_bytes(b"recent")
     old_stamp = time.time() - 49 * 3600
     os.utime(old_entry, (old_stamp, old_stamp))
+    recent_stamp = time.time() - 1
+    os.utime(recent_entry, (recent_stamp, recent_stamp))
     environment["HOUSEKEEPING_CACHE_ROOTS"] = str(cache_root)
-    environment["HOUSEKEEPING_FREE_BYTES_OVERRIDE"] = str(5 * 1024**3)
+    environment["HOUSEKEEPING_FREE_BYTES_OVERRIDE"] = str(7 * 1024**3)
 
     result = run_housekeeping(environment)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert not old_entry.exists()
-    assert recent_entry.exists()
+    assert not recent_entry.exists()
 
 
 def test_opencode_malformed_json_fails_safe(environment, tmp_path):
