@@ -68,6 +68,7 @@ else:
             "HOUSEKEEPING_LOG_FILE": str(state / "housekeeping.log"),
             "HOUSEKEEPING_LOCK_FILE": str(state / "housekeeping.lock"),
             "HOUSEKEEPING_DF_TARGET": str(tmp_path),
+            "HOUSEKEEPING_FREE_BYTES_OVERRIDE": str(10 * 1024**3),
             "OPENCODE_DB": str(home / ".local" / "share" / "opencode" / "opencode.db"),
             "DURABLE_STATUSES": "{}",
         }
@@ -153,7 +154,11 @@ def test_tts_retention_policy(environment):
 
     assert result.returncode == 0, result.stdout + result.stderr
     for name, (_state, _age, _durable, kept) in cases.items():
-        assert paths[name].exists() is kept, name
+        if kept:
+            assert paths[name].exists(), name
+        else:
+            assert paths[name].exists(), name
+            assert not (paths[name] / "out").exists(), name
 
 
 def make_fake_opencode(path, sessions, calls_file, malformed=False):
@@ -253,6 +258,77 @@ def test_opencode_no_deletions_skips_checkpoint_and_vacuum(environment, tmp_path
     assert not any(call[:2] == ["session", "delete"] for call in calls_made)
     assert not any(call[0] == "db" for call in calls_made)
     assert "no sessions deleted: checkpoint and VACUUM not executed" in result.stdout
+
+
+def test_pressure_removes_terminal_job_payload_but_keeps_metadata(environment):
+    job = make_job(Path(environment["JOBS_DIR"]), "pressure-failed", "FAILED", 1, "1")
+    output = job / "out"
+    output.mkdir()
+    (output / "large.tmp").write_bytes(b"payload")
+    environment["DURABLE_STATUSES"] = json.dumps({"pressure-failed": "failed"})
+    environment["HOUSEKEEPING_FREE_BYTES_OVERRIDE"] = str(5 * 1024**3)
+
+    result = run_housekeeping(environment)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert job.exists() and (job / "status").exists()
+    assert not output.exists()
+    assert "level=critical" in result.stdout
+    assert "DELETE payload job=" in result.stdout
+
+
+def test_pressure_keeps_job_with_recent_heartbeat(environment):
+    job = make_job(Path(environment["JOBS_DIR"]), "active-evidence", "FAILED", 100, "1")
+    output = job / "out"
+    output.mkdir()
+    (output / "large.tmp").write_bytes(b"payload")
+    (job / "heartbeat").write_text(str(int(time.time())), encoding="utf-8")
+    environment["DURABLE_STATUSES"] = json.dumps({"active-evidence": "failed"})
+    environment["HOUSEKEEPING_FREE_BYTES_OVERRIDE"] = str(5 * 1024**3)
+
+    result = run_housekeeping(environment)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert output.exists()
+    assert "KEEP active evidence" in result.stdout
+
+
+def test_pressure_removes_old_tmp_file_but_keeps_recent_file(environment):
+    tmp_root = Path(environment["TMP_ROOT"])
+    old_file = tmp_root / "opencode-old.tmp"
+    recent_file = tmp_root / "opencode-recent.tmp"
+    old_file.write_bytes(b"old")
+    recent_file.write_bytes(b"recent")
+    old_stamp = time.time() - 49 * 3600
+    os.utime(old_file, (old_stamp, old_stamp))
+    environment["HOUSEKEEPING_FREE_BYTES_OVERRIDE"] = str(5 * 1024**3)
+
+    result = run_housekeeping(environment)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not old_file.exists()
+    assert recent_file.exists()
+
+
+def test_pressure_removes_old_disposable_cache_entry(environment, tmp_path):
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    old_entry = cache_root / "old-download"
+    recent_entry = cache_root / "recent-download"
+    old_entry.mkdir()
+    recent_entry.mkdir()
+    (old_entry / "blob").write_bytes(b"old")
+    (recent_entry / "blob").write_bytes(b"recent")
+    old_stamp = time.time() - 49 * 3600
+    os.utime(old_entry, (old_stamp, old_stamp))
+    environment["HOUSEKEEPING_CACHE_ROOTS"] = str(cache_root)
+    environment["HOUSEKEEPING_FREE_BYTES_OVERRIDE"] = str(5 * 1024**3)
+
+    result = run_housekeeping(environment)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not old_entry.exists()
+    assert recent_entry.exists()
 
 
 def test_opencode_malformed_json_fails_safe(environment, tmp_path):

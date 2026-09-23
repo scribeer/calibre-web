@@ -31,6 +31,8 @@ DF_TARGET="${HOUSEKEEPING_DF_TARGET:-$HOME}"
 FTS_GENERATION="9345aa9df713b711698884e48bb5d415c741f3f299582319f026794dcd6c9a45"
 MIB=$((1024 * 1024))
 GIB=$((1024 * 1024 * 1024))
+NORMAL_FREE_BYTES=$((8 * GIB))
+PRESSURE_FREE_BYTES=$((6 * GIB))
 
 mkdir -p -- "$STATE_DIR" "$(dirname "$LOCK_FILE")" || {
   printf 'ERROR cannot create housekeeping state directory\n' >&2
@@ -96,6 +98,32 @@ free_bytes() {
   printf '\n'
 }
 
+PRESSURE_LEVEL="normal"
+if [ -n "${HOUSEKEEPING_FREE_BYTES_OVERRIDE:-}" ]; then
+  CURRENT_FREE_BYTES="$HOUSEKEEPING_FREE_BYTES_OVERRIDE"
+else
+  CURRENT_FREE_BYTES="$(free_bytes "$DF_TARGET" 2>/dev/null || true)"
+fi
+if [[ "$CURRENT_FREE_BYTES" =~ ^[0-9]+$ ]]; then
+  if [ "$CURRENT_FREE_BYTES" -lt "$PRESSURE_FREE_BYTES" ]; then
+    PRESSURE_LEVEL="critical"
+  elif [ "$CURRENT_FREE_BYTES" -lt "$NORMAL_FREE_BYTES" ]; then
+    PRESSURE_LEVEL="pressure"
+  fi
+fi
+
+if [ -n "${HOUSEKEEPING_CACHE_ROOTS:-}" ]; then
+  IFS=: read -r -a CACHE_ROOTS <<< "$HOUSEKEEPING_CACHE_ROOTS"
+else
+  CACHE_ROOTS=(
+    "$HOME/.cache/pip"
+    "$HOME/.cache/huggingface"
+    "$HOME/.cache/torch"
+    "$HOME/.cache/uv"
+    "$HOME/.cache/datalab/models"
+  )
+fi
+
 root_is_safe() {
   local root="$1" resolved
   [ -d "$root" ] && [ ! -L "$root" ] || return 1
@@ -112,6 +140,85 @@ direct_child_is_safe() {
   target_real="$(readlink -f -- "$target" 2>/dev/null)" || return 1
   [ "$(dirname -- "$target_real")" = "$root_real" ] || return 1
   [ "$target_real" = "$root_real/$(basename -- "$target")" ]
+}
+
+direct_entry_is_safe() {
+  local root="$1" target="$2" root_real target_real
+  root_is_safe "$root" || return 1
+  [ -e "$target" ] && [ ! -L "$target" ] || return 1
+  [ "$(dirname -- "$target")" = "$root" ] || return 1
+  root_real="$(readlink -f -- "$root" 2>/dev/null)" || return 1
+  target_real="$(readlink -f -- "$target" 2>/dev/null)" || return 1
+  [ "$(dirname -- "$target_real")" = "$root_real" ]
+}
+
+job_child_is_safe() {
+  local root="$1" target="$2" root_real target_real
+  root_is_safe "$root" || return 1
+  [ -e "$target" ] || return 1
+  [ ! -L "$target" ] || return 1
+  [ "$(dirname -- "$target")" = "$root" ] || return 1
+  root_real="$(readlink -f -- "$root" 2>/dev/null)" || return 1
+  target_real="$(readlink -f -- "$target" 2>/dev/null)" || return 1
+  [ "$(dirname -- "$target_real")" = "$root_real" ]
+}
+
+job_has_live_process() {
+  local job="$1" id="$2" key pid boot cmdline
+  for key in RUNNER_PID PID SETUP_PID; do
+    pid="$(grep -m1 "^${key}=" "$job/status" 2>/dev/null | cut -d= -f2-)"
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || continue
+    [ -r "/proc/$pid/cmdline" ] || continue
+    boot="$(grep -m1 "^${key}_BOOT_ID=" "$job/status" 2>/dev/null | cut -d= -f2-)"
+    [ -z "$boot" ] || [ "$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)" = "$boot" ] || continue
+    cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    case "$cmdline" in
+      *"$AUBOOK_REMOTE"*"$id"*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+job_has_recent_heartbeat() {
+  local job="$1" heartbeat now age
+  heartbeat="$(cat "$job/heartbeat" 2>/dev/null || true)"
+  [[ "$heartbeat" =~ ^[0-9]+$ ]] || return 1
+  now="$(date +%s)"
+  age=$((now - heartbeat))
+  [ "$age" -ge 0 ] && [ "$age" -lt 180 ]
+}
+
+path_is_in_use() {
+  local target="$1"
+  [ -S "$target" ] && return 0
+  command -v fuser >/dev/null 2>&1 && fuser -s -- "$target" 2>/dev/null
+}
+
+remove_entry() {
+  local section="$1" root="$2" target="$3" size
+  if ! direct_entry_is_safe "$root" "$target"; then
+    printf '%s SKIP unsafe path: %s\n' "$section" "$target"
+    return 1
+  fi
+  if path_is_in_use "$target"; then
+    printf '%s KEEP active/in-use %s\n' "$section" "$target"
+    return 1
+  fi
+  size="$(du -sb -- "$target" 2>/dev/null | cut -f1)"
+  [[ "$size" =~ ^[0-9]+$ ]] || size=0
+  if [ "$MODE" = "apply" ]; then
+    if rm -rf -- "$target"; then
+      printf '%s DELETE %s bytes=%s\n' "$section" "$target" "$size"
+      LAST_REMOVED_BYTES="$size"
+      return 0
+    fi
+    printf '%s ERROR delete failed: %s\n' "$section" "$target"
+    RUN_FAILED=1
+    return 1
+  fi
+  printf '%s DELETE(dry-run) %s bytes=%s\n' "$section" "$target" "$size"
+  LAST_REMOVED_BYTES="$size"
+  return 0
 }
 
 remove_directory() {
@@ -135,6 +242,40 @@ remove_directory() {
   printf '%s DELETE(dry-run) %s bytes=%s\n' "$section" "$target" "$size"
   LAST_REMOVED_BYTES="$size"
   return 0
+}
+
+cleanup_job_payload() {
+  local section="$1" job="$2" freed=0 child before after
+  before="$(dir_bytes "$job")"
+  for child in "$job/work" "$job/out" "$job"/source.* "$job/source_path" \
+    "$job/heartbeat" "$job/heartbeat.stop" "$job/LOW_DISK_ABORT"; do
+    [ -e "$child" ] || continue
+    if ! job_child_is_safe "$job" "$child"; then
+      printf '%s SKIP unsafe job payload: %s\n' "$section" "$child"
+      RUN_FAILED=1
+      continue
+    fi
+    if [ "$MODE" = "apply" ]; then
+      if ! rm -rf -- "$child"; then
+        printf '%s ERROR payload delete failed: %s\n' "$section" "$child"
+        RUN_FAILED=1
+      fi
+    else
+      printf '%s DELETE(dry-run) %s\n' "$section" "$child"
+    fi
+  done
+  after="$(dir_bytes "$job")"
+  [[ "$before" =~ ^[0-9]+$ ]] || before=0
+  [[ "$after" =~ ^[0-9]+$ ]] || after=0
+  if [ "$MODE" = "apply" ]; then
+    freed=$((before - after))
+    [ "$freed" -ge 0 ] || freed=0
+    printf '%s DELETE payload job=%s bytes=%s\n' "$section" "$job" "$freed"
+  else
+    freed="$before"
+    printf '%s DELETE(dry-run) payload job=%s bytes=%s\n' "$section" "$job" "$freed"
+  fi
+  LAST_REMOVED_BYTES="$freed"
 }
 
 show_df() {
@@ -283,7 +424,7 @@ print(status)
 }
 
 cleanup_tts_jobs() {
-  local section="tts-jobs" freed=0 job id output state status_mtime age now expected
+  local section="tts-jobs" freed=0 job id output state status_mtime age now expected eligible
   printf '\n[%s]\n' "$section"
   if ! root_is_safe "$JOBS_DIR"; then
     printf '%s SKIP unsafe or missing root: %s\n' "$section" "$JOBS_DIR"
@@ -340,6 +481,10 @@ cleanup_tts_jobs() {
         flock -u 8; exec 8>&-; continue
         ;;
     esac
+    if job_has_live_process "$job" "$id" || job_has_recent_heartbeat "$job"; then
+      printf '%s KEEP active evidence state=%s %s\n' "$section" "$state" "$job"
+      flock -u 8; exec 8>&-; continue
+    fi
     if ! durable_status_for_job "$job" "$id"; then
       printf '%s KEEP unknown durable state local=%s %s\n' "$section" "$state" "$job"
       flock -u 8; exec 8>&-; continue
@@ -354,36 +499,56 @@ cleanup_tts_jobs() {
       flock -u 8; exec 8>&-; continue
     fi
     age=$((now - status_mtime))
+    eligible=0
     case "$state" in
       DONE)
         expected="ready"
-        if [ "$DURABLE_STATUS" != "$expected" ] || [ "$age" -le $((24 * 3600)) ]; then
+        [ "$DURABLE_STATUS" = "$expected" ] || {
           printf '%s KEEP state=%s durable=%s age_seconds=%s %s\n' "$section" "$state" "$DURABLE_STATUS" "$age" "$job"
           flock -u 8; exec 8>&-; continue
-        fi
+        }
+        [ "$PRESSURE_LEVEL" != "normal" ] || [ "$age" -gt $((24 * 3600)) ] || {
+          printf '%s KEEP state=%s durable=%s age_seconds=%s %s\n' "$section" "$state" "$DURABLE_STATUS" "$age" "$job"
+          flock -u 8; exec 8>&-; continue
+        }
+        eligible=1
         ;;
       INTERRUPTED)
-        if [ "$DURABLE_STATUS" != "failed" ] || [ "$age" -le $((72 * 3600)) ]; then
+        [ "$DURABLE_STATUS" = "failed" ] || {
           printf '%s KEEP state=%s durable=%s age_seconds=%s %s\n' "$section" "$state" "$DURABLE_STATUS" "$age" "$job"
           flock -u 8; exec 8>&-; continue
-        fi
+        }
+        [ "$PRESSURE_LEVEL" != "normal" ] || [ "$age" -gt $((72 * 3600)) ] || {
+          printf '%s KEEP state=%s durable=%s age_seconds=%s %s\n' "$section" "$state" "$DURABLE_STATUS" "$age" "$job"
+          flock -u 8; exec 8>&-; continue
+        }
+        eligible=1
         ;;
       FAILED)
-        if [ "$DURABLE_STATUS" != "failed" ] || [ "$age" -le $((72 * 3600)) ]; then
+        [ "$DURABLE_STATUS" = "failed" ] || {
           printf '%s KEEP state=%s durable=%s age_seconds=%s %s\n' "$section" "$state" "$DURABLE_STATUS" "$age" "$job"
           flock -u 8; exec 8>&-; continue
-        fi
+        }
+        [ "$PRESSURE_LEVEL" != "normal" ] || [ "$age" -gt $((72 * 3600)) ] || {
+          printf '%s KEEP state=%s durable=%s age_seconds=%s %s\n' "$section" "$state" "$DURABLE_STATUS" "$age" "$job"
+          flock -u 8; exec 8>&-; continue
+        }
+        eligible=1
         ;;
       CANCELLED)
         if [ "$DURABLE_STATUS" != "cancelled" ] || [ ! -f "$job/CANCEL_COMPLETE" ] \
-          || [ -L "$job/CANCEL_COMPLETE" ] || [ "$age" -le $((72 * 3600)) ]; then
+          || [ -L "$job/CANCEL_COMPLETE" ] \
+          || { [ "$PRESSURE_LEVEL" = "normal" ] && [ "$age" -le $((72 * 3600)) ]; }; then
           printf '%s KEEP state=%s durable=%s age_seconds=%s %s\n' "$section" "$state" "$DURABLE_STATUS" "$age" "$job"
           flock -u 8; exec 8>&-; continue
         fi
+        eligible=1
         ;;
     esac
+    [ "$eligible" -eq 1 ] || { flock -u 8; exec 8>&-; continue; }
     LAST_REMOVED_BYTES=0
-    if remove_directory "$section" "$JOBS_DIR" "$job"; then
+    cleanup_job_payload "$section" "$job"
+    if [ "$LAST_REMOVED_BYTES" -gt 0 ]; then
       freed=$((freed + LAST_REMOVED_BYTES))
     fi
     flock -u 8
@@ -539,7 +704,7 @@ PY
 }
 
 cleanup_tmp() {
-  local section="tmp" freed=0 candidate age now mtime
+  local section="tmp" freed=0 candidate age now mtime max_age
   local -A seen=()
   printf '\n[%s]\n' "$section"
   if ! root_is_safe "$TMP_ROOT"; then
@@ -548,14 +713,17 @@ cleanup_tmp() {
     return
   fi
   now="$(date +%s)"
+  max_age=$((48 * 3600))
+  [ "$PRESSURE_LEVEL" = "critical" ] && max_age=$((24 * 3600))
   shopt -s nullglob
   for candidate in "$TMP_ROOT"/aubooks-*-deploy.* \
     "$TMP_ROOT"/flibusta-calibre-test.* \
     "$TMP_ROOT"/calibre_test_* \
-    "$TMP_ROOT"/calibre_smoke_*; do
+    "$TMP_ROOT"/calibre_smoke_* \
+    "$TMP_ROOT"/opencode-*; do
     [ -z "${seen[$candidate]:-}" ] || continue
     seen["$candidate"]=1
-    if [ -L "$candidate" ] || [ ! -d "$candidate" ] || ! direct_child_is_safe "$TMP_ROOT" "$candidate"; then
+    if [ -L "$candidate" ] || ! direct_entry_is_safe "$TMP_ROOT" "$candidate"; then
       printf '%s KEEP unsafe/symlink/non-directory %s\n' "$section" "$candidate"
       continue
     fi
@@ -565,12 +733,12 @@ cleanup_tmp() {
       continue
     fi
     age=$((now - mtime))
-    if [ "$age" -le $((48 * 3600)) ]; then
+    if [ "$age" -le "$max_age" ]; then
       printf '%s KEEP recent age_seconds=%s %s\n' "$section" "$age" "$candidate"
       continue
     fi
     LAST_REMOVED_BYTES=0
-    if remove_directory "$section" "$TMP_ROOT" "$candidate"; then
+    if remove_entry "$section" "$TMP_ROOT" "$candidate"; then
       freed=$((freed + LAST_REMOVED_BYTES))
     fi
   done
@@ -578,12 +746,59 @@ cleanup_tmp() {
   printf '%s freed_bytes=%s mode=%s\n' "$section" "$freed" "$MODE"
 }
 
+cleanup_caches() {
+  local section="caches" root candidate age now mtime max_age freed=0
+  local -A seen=()
+  printf '\n[%s]\n' "$section"
+  max_age=$((7 * 24 * 3600))
+  [ "$PRESSURE_LEVEL" = "pressure" ] && max_age=$((48 * 3600))
+  [ "$PRESSURE_LEVEL" = "critical" ] && max_age=$((24 * 3600))
+  now="$(date +%s)"
+  for root in "${CACHE_ROOTS[@]}"; do
+    if ! root_is_safe "$root"; then
+      printf '%s KEEP missing/unsafe root %s\n' "$section" "$root"
+      continue
+    fi
+    shopt -s nullglob
+    for candidate in "$root"/* "$root"/.*; do
+      [ -z "${seen[$candidate]:-}" ] || continue
+      seen["$candidate"]=1
+      case "$(basename -- "$candidate")" in
+        .|..|*.lock) continue ;;
+      esac
+      if ! direct_entry_is_safe "$root" "$candidate"; then
+        printf '%s KEEP unsafe %s\n' "$section" "$candidate"
+        continue
+      fi
+      mtime="$(stat -c %Y -- "$candidate" 2>/dev/null || true)"
+      if [[ ! "$mtime" =~ ^[0-9]+$ ]] || [ "$mtime" -gt "$now" ]; then
+        printf '%s KEEP invalid age %s\n' "$section" "$candidate"
+        continue
+      fi
+      age=$((now - mtime))
+      if [ "$age" -le "$max_age" ]; then
+        printf '%s KEEP recent age_seconds=%s %s\n' "$section" "$age" "$candidate"
+        continue
+      fi
+      LAST_REMOVED_BYTES=0
+      if remove_entry "$section" "$root" "$candidate"; then
+        freed=$((freed + LAST_REMOVED_BYTES))
+      fi
+    done
+    shopt -u nullglob
+  done
+  printf '%s freed_bytes=%s mode=%s\n' "$section" "$freed" "$MODE"
+}
+
 printf 'START timestamp=%s mode=%s pid=%s\n' "$(timestamp)" "$MODE" "$$"
+printf 'WATERMARK free_bytes=%s level=%s normal_min=%s pressure_min=%s\n' \
+  "${CURRENT_FREE_BYTES:-unknown}" "$PRESSURE_LEVEL" "$NORMAL_FREE_BYTES" "$PRESSURE_FREE_BYTES"
 show_df 'DF BEFORE'
 cleanup_sync_export
 cleanup_tts_jobs
 cleanup_opencode
 cleanup_tmp
+cleanup_caches
 show_df 'DF AFTER'
 printf 'DONE timestamp=%s mode=%s\n' "$(timestamp)" "$MODE"
 exit "$RUN_FAILED"
